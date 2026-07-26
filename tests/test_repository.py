@@ -123,9 +123,29 @@ def test_app_config_from_env_uses_concrete_defaults(monkeypatch: pytest.MonkeyPa
     monkeypatch.delenv("NEO4J_URI", raising=False)
     monkeypatch.delenv("NEO4J_MAX_HOPS", raising=False)
     monkeypatch.delenv("AML_ALERT_EVIDENCE_LIMIT", raising=False)
+    monkeypatch.delenv("AML_ALERT_LLM_ENABLED", raising=False)
+    monkeypatch.delenv("AML_ALERT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("AML_ALERT_LLM_MODEL", raising=False)
 
     config = AppConfig.from_env()
 
     assert config.neo4j_uri == "bolt://localhost:7687"
     assert config.neo4j_max_hops == 2
     assert config.evidence_limit == 10
+    assert config.llm_enabled is False
+    assert config.llm_provider == "rule-based"
+    assert config.llm_model == "local-insight-summarizer"
+
+
+def test_app_config_from_env_reads_llm_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AML_ALERT_LLM_ENABLED", "true")
+    monkeypatch.setenv("AML_ALERT_LLM_PROVIDER", "demo-provider")
+    monkeypatch.setenv("AML_ALERT_LLM_MODEL", "demo-model")
+    monkeypatch.setenv("AML_ALERT_LLM_TIMEOUT_SECONDS", "30")
+
+    config = AppConfig.from_env()
+
+    assert config.llm_enabled is True
+    assert config.llm_provider == "demo-provider"
+    assert config.llm_model == "demo-model"
+    assert config.llm_timeout_seconds == 30
