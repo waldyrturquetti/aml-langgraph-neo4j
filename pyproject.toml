@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aml-alert-triage-agent"
+version = "0.1.0"
+description = "A fictional AML alert triage agent using LangGraph and Neo4j"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "neo4j>=5.23.1",
+  "langgraph>=0.2.0",
+  "pydantic>=2.8.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
