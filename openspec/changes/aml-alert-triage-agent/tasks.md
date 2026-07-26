@@ -17,8 +17,9 @@
 
 - [x] 3.1 Implement repository or adapter methods for reading alert-linked entities and relationships from Neo4j.
 - [x] 3.2 Add a small fictional dataset or fixture set that exercises connected and disconnected alert scenarios.
-- [ ] 3.3 Verify the graph queries return the evidence shape expected by the workflow state.
-- [ ] 3.4 Verify the application can connect to the Neo4j container using the documented local configuration.
+- [x] 3.3 Add a repeatable local seed-data load path for Neo4j (for example, versioned Cypher fixtures) that inserts fictional connected and disconnected scenarios.
+- [x] 3.4 Verify the graph queries return the evidence shape expected by the workflow state.
+- [ ] 3.5 Verify the application can connect to the Neo4j container using the documented local configuration.
 
 ## 4. Validation and Documentation
 

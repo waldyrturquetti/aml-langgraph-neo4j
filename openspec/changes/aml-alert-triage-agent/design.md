@@ -32,6 +32,10 @@ The main constraint is to keep the system understandable for learning while stil
   - Rationale: AML investigations are graph-shaped by nature, so connected accounts, counterparties, transactions, and historical alerts are easier to traverse in a property graph.
   - Alternatives considered: a relational schema would store the same facts, but it would require more joins and would not naturally support relationship-centric reasoning.
 
+- Seed Neo4j with a repeatable fictional dataset using versioned Cypher.
+  - Rationale: query and workflow validation should run against known graph fixtures that can be loaded the same way on any machine.
+  - Alternatives considered: generating fixtures only in Python memory would be faster, but it would not verify real Neo4j query behavior.
+
 - Keep the workflow state explicit and minimal.
   - Rationale: a small, typed state object makes it easier to reason about node inputs and outputs, and it reduces accidental coupling between nodes.
   - Alternatives considered: storing large intermediate artifacts in free-form memory would make the workflow harder to validate.
@@ -56,8 +60,9 @@ The main constraint is to keep the system understandable for learning while stil
 1. Add Docker Compose and environment configuration for local Neo4j startup.
 2. Add the new capability spec and implement the LangGraph workflow behind it.
 3. Introduce Neo4j-backed repositories or adapters for fictional alert and relationship data.
-4. Add or update tests for each graph stage and the final triage output.
-5. Verify the workflow on a small fictional dataset before expanding the scenario set.
+4. Add a repeatable seed-load path for fictional graph data and verify container connectivity.
+5. Add or update tests for each graph stage and the final triage output, including evidence shape checks.
+6. Verify the workflow on a small fictional dataset before expanding the scenario set.
 
 Rollback strategy:
 - Remove the new change artifacts and revert the implementation changes if the workflow produces unstable or untestable results.

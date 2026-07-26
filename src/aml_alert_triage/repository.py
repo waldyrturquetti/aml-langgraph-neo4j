@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 from .config import AppConfig
@@ -61,21 +62,70 @@ class Neo4jAlertRepository:
 
         with self.driver.session(database=self.config.neo4j_database) as session:
             records = session.run(query, customer_id=customer_id, limit=query_limit)
-            return [
-                EvidenceItem(
-                    kind=record["kind"],
-                    subject=record["subject"],
-                    details=record["details"],
-                    source=record["source"],
-                )
-                for record in records
-            ]
+            return [self._record_to_evidence_item(record) for record in records]
+
+    def _record_to_evidence_item(self, record: object) -> EvidenceItem:
+        try:
+            kind = str(record["kind"])
+            subject = str(record["subject"])
+            details = str(record["details"])
+            source = str(record["source"])
+        except Exception as exc:
+            raise ValueError(
+                "Neo4j evidence record is missing one of required fields: "
+                "kind, subject, details, source"
+            ) from exc
+
+        return EvidenceItem(
+            kind=kind,
+            subject=subject,
+            details=details,
+            source=source,
+        )
 
     def fetch_connected_context(self, customer_id: str) -> list[EvidenceItem]:
         return self.fetch_evidence(customer_id, self.config.evidence_limit)
 
     def describe_connection(self) -> str:
         return f"{self.config.neo4j_uri} ({self.config.neo4j_database})"
+
+    def verify_connection(self) -> None:
+        if self.driver is None:
+            raise RuntimeError(
+                "Neo4j driver is not available. Install neo4j dependencies and start the Docker Compose service."
+            )
+
+        try:
+            with self.driver.session(database=self.config.neo4j_database) as session:
+                result = session.run("RETURN 1 AS ok")
+                first = result.single()
+                ok = first["ok"] if first is not None else None
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to connect to Neo4j at {self.describe_connection()}. "
+                "Check .env settings and ensure Docker Compose Neo4j is running."
+            ) from exc
+
+        if ok != 1:
+            raise RuntimeError(
+                f"Unexpected Neo4j connectivity response from {self.describe_connection()}."
+            )
+
+    def load_seed_file(self, seed_file: Path) -> int:
+        if self.driver is None:
+            raise RuntimeError(
+                "Neo4j driver is not available. Start the Neo4j container before loading seed data."
+            )
+
+        statements = [
+            statement.strip()
+            for statement in seed_file.read_text(encoding="utf-8").split(";")
+            if statement.strip()
+        ]
+        with self.driver.session(database=self.config.neo4j_database) as session:
+            for statement in statements:
+                session.run(statement)
+        return len(statements)
 
     def close(self) -> None:
         if self.driver is not None:

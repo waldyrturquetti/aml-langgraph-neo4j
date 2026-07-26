@@ -16,12 +16,13 @@ class AppConfig:
 
     @classmethod
     def from_env(cls) -> "AppConfig":
+        defaults = cls()
         return cls(
-            neo4j_uri=os.getenv("NEO4J_URI", cls.neo4j_uri),
-            neo4j_user=os.getenv("NEO4J_USER", cls.neo4j_user),
-            neo4j_password=os.getenv("NEO4J_PASSWORD", cls.neo4j_password),
-            neo4j_database=os.getenv("NEO4J_DATABASE", cls.neo4j_database),
-            neo4j_auth=os.getenv("NEO4J_AUTH", cls.neo4j_auth),
-            neo4j_max_hops=int(os.getenv("NEO4J_MAX_HOPS", str(cls.neo4j_max_hops))),
-            evidence_limit=int(os.getenv("AML_ALERT_EVIDENCE_LIMIT", str(cls.evidence_limit))),
+            neo4j_uri=os.getenv("NEO4J_URI", defaults.neo4j_uri),
+            neo4j_user=os.getenv("NEO4J_USER", defaults.neo4j_user),
+            neo4j_password=os.getenv("NEO4J_PASSWORD", defaults.neo4j_password),
+            neo4j_database=os.getenv("NEO4J_DATABASE", defaults.neo4j_database),
+            neo4j_auth=os.getenv("NEO4J_AUTH", defaults.neo4j_auth),
+            neo4j_max_hops=int(os.getenv("NEO4J_MAX_HOPS", str(defaults.neo4j_max_hops))),
+            evidence_limit=int(os.getenv("AML_ALERT_EVIDENCE_LIMIT", str(defaults.evidence_limit))),
         )

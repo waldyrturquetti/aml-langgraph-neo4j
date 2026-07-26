@@ -37,6 +37,11 @@ The system MUST provide a LangGraph-based workflow that ingests a fictional AML 
 ### Requirement: Neo4j evidence enrichment
 The system MUST enrich the alert with connected evidence from Neo4j, including related entities, transactions, and prior alert history when available.
 
+#### Scenario: Fictional seed data can be inserted for local validation
+- **WHEN** a developer prepares a local environment for the workflow
+- **THEN** the project SHALL provide a repeatable way to load fictional AML graph data into the Neo4j container
+- **AND THEN** the dataset SHALL include both a connected-evidence case and a no-relationship case
+
 #### Scenario: Evidence is retrieved from graph relationships
 - **WHEN** the workflow begins evidence enrichment for an alert entity
 - **THEN** it SHALL query Neo4j for directly related nodes and relationships within the configured investigation scope
@@ -46,6 +51,11 @@ The system MUST enrich the alert with connected evidence from Neo4j, including r
 - **WHEN** Neo4j does not contain related evidence for an alert
 - **THEN** the system SHALL continue the workflow with an empty or limited evidence set
 - **AND THEN** it SHALL record that no related evidence was found
+
+#### Scenario: Retrieved evidence matches workflow state shape
+- **WHEN** graph evidence is returned from Neo4j queries
+- **THEN** each evidence item SHALL include `kind`, `subject`, `details`, and `source`
+- **AND THEN** the workflow SHALL accept the result without additional shape adaptation
 
 ### Requirement: Analyst-ready recommendation
 The system MUST generate an analyst-ready triage recommendation that references the collected evidence and does not claim unsupported facts.
