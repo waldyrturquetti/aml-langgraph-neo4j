@@ -24,6 +24,11 @@ class AppConfig:
     llm_provider: str = "rule-based"
     llm_model: str = "local-insight-summarizer"
     llm_timeout_seconds: int = 15
+    max_enrichment_attempts: int = 2
+    cycle_max_hops: int = 6
+    structuring_fanout_threshold: int = 4
+    structuring_fanin_threshold: int = 4
+    min_evidence_for_conclusion: int = 2
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -41,5 +46,18 @@ class AppConfig:
             llm_model=os.getenv("AML_ALERT_LLM_MODEL", defaults.llm_model),
             llm_timeout_seconds=int(
                 os.getenv("AML_ALERT_LLM_TIMEOUT_SECONDS", str(defaults.llm_timeout_seconds))
+            ),
+            max_enrichment_attempts=int(
+                os.getenv("AML_ALERT_MAX_ENRICHMENT_ATTEMPTS", str(defaults.max_enrichment_attempts))
+            ),
+            cycle_max_hops=int(os.getenv("AML_ALERT_CYCLE_MAX_HOPS", str(defaults.cycle_max_hops))),
+            structuring_fanout_threshold=int(
+                os.getenv("AML_ALERT_STRUCTURING_FANOUT_THRESHOLD", str(defaults.structuring_fanout_threshold))
+            ),
+            structuring_fanin_threshold=int(
+                os.getenv("AML_ALERT_STRUCTURING_FANIN_THRESHOLD", str(defaults.structuring_fanin_threshold))
+            ),
+            min_evidence_for_conclusion=int(
+                os.getenv("AML_ALERT_MIN_EVIDENCE_FOR_CONCLUSION", str(defaults.min_evidence_for_conclusion))
             ),
         )

@@ -47,10 +47,11 @@ class _FakeDriver:
 def test_fetch_evidence_from_neo4j_matches_expected_shape() -> None:
     records = [
         {
-            "kind": "transaction",
-            "subject": "acct-001",
-            "details": "Five deposits over three days",
-            "source": "neo4j",
+            "channel": "pix",
+            "amount": 640.0,
+            "currency": "BRL",
+            "counterparty": "acct-108",
+            "direction": "to",
         }
     ]
 
@@ -64,23 +65,19 @@ def test_fetch_evidence_from_neo4j_matches_expected_shape() -> None:
     evidence = repository.fetch_evidence("cust-100", limit=5)
 
     assert len(evidence) == 1
-    assert evidence[0].kind == "transaction"
-    assert evidence[0].subject == "acct-001"
-    assert evidence[0].details == "Five deposits over three days"
+    assert evidence[0].kind == "pix"
+    assert evidence[0].subject == "acct-108"
+    assert evidence[0].details == "PIX transfer of 640.00 BRL to acct-108."
     assert evidence[0].source == "neo4j"
 
 
 def test_fetch_evidence_raises_value_error_for_invalid_record_shape() -> None:
-    records = [{"kind": "transaction", "subject": "acct-001", "source": "neo4j"}]
+    record = {"channel": "pix", "subject": "acct-001", "source": "neo4j"}  # missing amount/currency/counterparty/direction
 
-    def run_handler(query: str, **params):
-        return _FakeResult(records=records)
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(lambda query, **params: _FakeResult()))
 
-    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
-
-    # fetch_evidence falls back to offline data on errors; call mapper directly to enforce shape contract.
     with pytest.raises(ValueError):
-        repository._record_to_evidence_item(records[0])
+        repository._record_to_transaction_evidence(record)
 
 
 def test_verify_connection_succeeds_with_expected_response() -> None:
@@ -94,7 +91,9 @@ def test_verify_connection_succeeds_with_expected_response() -> None:
 
 
 def test_verify_connection_fails_when_driver_is_missing() -> None:
-    repository = Neo4jAlertRepository(config=AppConfig(), driver=None)
+    # force_offline guarantees no driver is created even if a real Neo4j
+    # instance happens to be reachable in the local environment.
+    repository = Neo4jAlertRepository.offline(config=AppConfig())
 
     with pytest.raises(RuntimeError, match="driver is not available"):
         repository.verify_connection()
@@ -117,6 +116,107 @@ def test_load_seed_file_executes_all_statements(tmp_path: Path) -> None:
     assert count == 2
     assert len(executed) == 2
     assert executed[0].startswith("MERGE")
+
+
+def test_load_seed_file_tolerates_semicolons_inside_string_literals(tmp_path: Path) -> None:
+    # A naive `text.split(";")` breaks the moment any property value in the
+    # seed contains a semicolon - this regression-tests the quote-aware
+    # statement splitter against exactly that case.
+    executed: list[str] = []
+
+    def run_handler(query: str, **params):
+        executed.append(query.strip())
+        return _FakeResult()
+
+    seed_file = tmp_path / "seed.cypher"
+    seed_file.write_text(
+        "// a comment; with a semicolon too\n"
+        "MERGE (:Alert {description: 'Multiple transfers; review needed.'});\n"
+        "MERGE (:Y {id: 2});\n",
+        encoding="utf-8",
+    )
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    count = repository.load_seed_file(seed_file)
+
+    assert count == 2
+    assert "Multiple transfers; review needed." in executed[0]
+
+
+def test_fetch_evidence_offline_merges_evidence_up_to_hop_radius() -> None:
+    # cust-500 has exactly one direct (hop-1) transaction; widening to hop-2
+    # pulls in that counterparty's other activity too.
+    repository = Neo4jAlertRepository.offline(AppConfig())
+
+    thin = repository.fetch_evidence("cust-500", hop_radius=1)
+    widened = repository.fetch_evidence("cust-500", hop_radius=2)
+
+    assert len(thin) == 1
+    assert thin[0].subject == "acct-108"
+    assert len(widened) > len(thin)
+    assert thin[0] in widened
+
+    # Regression: hop-2 items must describe the pivot's *other* counterparty,
+    # not the pivot account itself repeated for every item.
+    hop2_items = [item for item in widened if item not in thin]
+    assert hop2_items
+    hop2_subjects = {item.subject for item in hop2_items}
+    assert "acct-108" not in hop2_subjects
+    assert len(hop2_subjects) > 1
+
+
+def test_fetch_cycle_evidence_reports_detected_cycle() -> None:
+    def run_handler(query: str, **params):
+        if "TRANSFERRED_TO*2.." in query:
+            return _FakeResult(single_row={"hops": 4})
+        if "TRANSFERRED_TO]->(counterparty)" in query or "<-[:TRANSFERRED_TO]-(counterparty)" in query:
+            return _FakeResult(single_row=None)
+        return _FakeResult(records=[])
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    evidence = repository.fetch_evidence("cust-300")
+
+    assert len(evidence) == 1
+    assert evidence[0].kind == "cycle"
+    assert "4 hop" in evidence[0].details
+
+
+def test_fetch_structuring_evidence_reports_fanout_and_fanin() -> None:
+    def run_handler(query: str, **params):
+        if "TRANSFERRED_TO*2.." in query:
+            return _FakeResult(single_row=None)
+        if "TRANSFERRED_TO]->(counterparty)" in query:
+            return _FakeResult(single_row={"counterparties": 6, "sample": ["acct-401", "acct-402"]})
+        if "<-[:TRANSFERRED_TO]-(counterparty)" in query:
+            return _FakeResult(single_row={"counterparties": 5, "sample": ["acct-601", "acct-602"]})
+        return _FakeResult(records=[])
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    evidence = repository.fetch_evidence("cust-400")
+
+    kinds = {item.kind for item in evidence}
+    assert "structuring-fanout" in kinds
+    assert "structuring-fanin" in kinds
+
+
+def test_fetch_evidence_second_hop_query_only_runs_when_hop_radius_widened() -> None:
+    queries_seen: list[str] = []
+
+    def run_handler(query: str, **params):
+        queries_seen.append(query)
+        return _FakeResult(records=[], single_row=None)
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    repository.fetch_evidence("cust-100", hop_radius=1)
+    assert not any("mid" in query for query in queries_seen)
+
+    queries_seen.clear()
+    repository.fetch_evidence("cust-100", hop_radius=2)
+    assert any("mid" in query for query in queries_seen)
 
 
 def test_app_config_from_env_uses_concrete_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

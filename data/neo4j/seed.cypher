@@ -1,23 +1,196 @@
-// Fictional AML demo graph seed data.
+// Fictional AML demo graph seed data (generated, deterministic).
 // Safe to run multiple times because all writes use MERGE.
+// Regenerate via the scratchpad generate_dataset.py script (fixed random seed);
+// do not hand-edit typology labels here - the point of this dataset is that
+// nothing in the graph states what pattern (if any) a customer is involved in.
 
-MERGE (c100:Customer {customer_id: 'cust-100', name: 'Jordan Miles'})
-MERGE (c101:Customer {customer_id: 'cust-101', name: 'Taylor Reed'})
-MERGE (c200:Customer {customer_id: 'cust-200', name: 'Riley Park'})
-MERGE (a001:Account {account_id: 'acct-001', type: 'checking'})
-MERGE (a777:Account {account_id: 'acct-777', type: 'savings'})
-MERGE (alert1:Alert {alert_id: 'alert-001', alert_type: 'cash-structuring'})
-MERGE (alert2:Alert {alert_id: 'alert-002', alert_type: 'new-beneficiary'})
-MERGE (txn1:Transaction {txn_id: 'txn-1001', amount: 2500.0, currency: 'USD'})
-MERGE (txn2:Transaction {txn_id: 'txn-1002', amount: 2600.0, currency: 'USD'})
+// --- Customers & accounts ---
+MERGE (cust_100:Customer {customer_id: 'cust-100', name: 'Jordan Miles'});
+MERGE (cust_101:Customer {customer_id: 'cust-101', name: 'Taylor Whitfield'});
+MERGE (cust_102:Customer {customer_id: 'cust-102', name: 'Riley Ibarra'});
+MERGE (cust_103:Customer {customer_id: 'cust-103', name: 'Morgan Reed'});
+MERGE (cust_104:Customer {customer_id: 'cust-104', name: 'Casey Bennett'});
+MERGE (cust_105:Customer {customer_id: 'cust-105', name: 'Drew Jarvis'});
+MERGE (cust_106:Customer {customer_id: 'cust-106', name: 'Jamie Park'});
+MERGE (cust_107:Customer {customer_id: 'cust-107', name: 'Sam Cruz'});
+MERGE (cust_108:Customer {customer_id: 'cust-108', name: 'Avery Kessler'});
+MERGE (cust_109:Customer {customer_id: 'cust-109', name: 'Quinn Ellis'});
+MERGE (cust_110:Customer {customer_id: 'cust-110', name: 'Reese Delgado'});
+MERGE (cust_111:Customer {customer_id: 'cust-111', name: 'Rowan Lang'});
+MERGE (cust_112:Customer {customer_id: 'cust-112', name: 'Skyler Nolan'});
+MERGE (cust_113:Customer {customer_id: 'cust-113', name: 'Emerson Fenwick'});
+MERGE (cust_114:Customer {customer_id: 'cust-114', name: 'Finley Mercer'});
+MERGE (cust_115:Customer {customer_id: 'cust-115', name: 'Hayden Sawyer'});
+MERGE (cust_116:Customer {customer_id: 'cust-116', name: 'Kendall Grant'});
+MERGE (cust_117:Customer {customer_id: 'cust-117', name: 'Logan Novak'});
+MERGE (cust_118:Customer {customer_id: 'cust-118', name: 'Peyton Okafor'});
+MERGE (cust_119:Customer {customer_id: 'cust-119', name: 'Sage Holloway'});
+MERGE (cust_120:Customer {customer_id: 'cust-120', name: 'Blair Miles'});
+MERGE (cust_121:Customer {customer_id: 'cust-121', name: 'Cameron Whitfield'});
+MERGE (cust_122:Customer {customer_id: 'cust-122', name: 'Dakota Ibarra'});
+MERGE (cust_123:Customer {customer_id: 'cust-123', name: 'Elliot Reed'});
+MERGE (cust_124:Customer {customer_id: 'cust-124', name: 'Harper Bennett'});
+MERGE (cust_200:Customer {customer_id: 'cust-200', name: 'Riley Park'});
+MERGE (cust_300:Customer {customer_id: 'cust-300', name: 'Morgan Ellis'});
+MERGE (cust_400:Customer {customer_id: 'cust-400', name: 'Casey Nolan'});
+MERGE (cust_500:Customer {customer_id: 'cust-500', name: 'Drew Sawyer'});
+MERGE (cust_600:Customer {customer_id: 'cust-600', name: 'Sam Whitfield'});
+MERGE (acct_100:Account {account_id: 'acct-100', type: 'checking'});
+MERGE (acct_101:Account {account_id: 'acct-101', type: 'checking'});
+MERGE (acct_102:Account {account_id: 'acct-102', type: 'checking'});
+MERGE (acct_103:Account {account_id: 'acct-103', type: 'checking'});
+MERGE (acct_104:Account {account_id: 'acct-104', type: 'checking'});
+MERGE (acct_105:Account {account_id: 'acct-105', type: 'checking'});
+MERGE (acct_106:Account {account_id: 'acct-106', type: 'checking'});
+MERGE (acct_107:Account {account_id: 'acct-107', type: 'checking'});
+MERGE (acct_108:Account {account_id: 'acct-108', type: 'checking'});
+MERGE (acct_109:Account {account_id: 'acct-109', type: 'checking'});
+MERGE (acct_110:Account {account_id: 'acct-110', type: 'checking'});
+MERGE (acct_111:Account {account_id: 'acct-111', type: 'checking'});
+MERGE (acct_112:Account {account_id: 'acct-112', type: 'checking'});
+MERGE (acct_113:Account {account_id: 'acct-113', type: 'checking'});
+MERGE (acct_114:Account {account_id: 'acct-114', type: 'checking'});
+MERGE (acct_115:Account {account_id: 'acct-115', type: 'checking'});
+MERGE (acct_116:Account {account_id: 'acct-116', type: 'checking'});
+MERGE (acct_117:Account {account_id: 'acct-117', type: 'checking'});
+MERGE (acct_118:Account {account_id: 'acct-118', type: 'checking'});
+MERGE (acct_119:Account {account_id: 'acct-119', type: 'checking'});
+MERGE (acct_120:Account {account_id: 'acct-120', type: 'checking'});
+MERGE (acct_121:Account {account_id: 'acct-121', type: 'checking'});
+MERGE (acct_122:Account {account_id: 'acct-122', type: 'checking'});
+MERGE (acct_123:Account {account_id: 'acct-123', type: 'checking'});
+MERGE (acct_124:Account {account_id: 'acct-124', type: 'checking'});
+MERGE (acct_200:Account {account_id: 'acct-200', type: 'checking'});
+MERGE (acct_300:Account {account_id: 'acct-300', type: 'checking'});
+MERGE (acct_301:Account {account_id: 'acct-301', type: 'checking'});
+MERGE (acct_302:Account {account_id: 'acct-302', type: 'checking'});
+MERGE (acct_303:Account {account_id: 'acct-303', type: 'checking'});
+MERGE (acct_400:Account {account_id: 'acct-400', type: 'checking'});
+MERGE (acct_401:Account {account_id: 'acct-401', type: 'checking'});
+MERGE (acct_402:Account {account_id: 'acct-402', type: 'checking'});
+MERGE (acct_403:Account {account_id: 'acct-403', type: 'checking'});
+MERGE (acct_404:Account {account_id: 'acct-404', type: 'checking'});
+MERGE (acct_405:Account {account_id: 'acct-405', type: 'checking'});
+MERGE (acct_406:Account {account_id: 'acct-406', type: 'checking'});
+MERGE (acct_500:Account {account_id: 'acct-500', type: 'checking'});
+MERGE (acct_600:Account {account_id: 'acct-600', type: 'checking'});
+MERGE (acct_601:Account {account_id: 'acct-601', type: 'checking'});
+MERGE (acct_602:Account {account_id: 'acct-602', type: 'checking'});
+MERGE (acct_603:Account {account_id: 'acct-603', type: 'checking'});
+MERGE (acct_604:Account {account_id: 'acct-604', type: 'checking'});
+MERGE (acct_605:Account {account_id: 'acct-605', type: 'checking'});
 
-MERGE (c100)-[:OWNS {note: 'Primary account holder'}]->(a001)
-MERGE (c101)-[:OWNS {note: 'Secondary account holder'}]->(a001)
-MERGE (c100)-[:RELATED_TO {note: 'Shared address with prior alert customer'}]-(c101)
-MERGE (alert1)-[:TARGETS {note: 'Alert targets customer cust-100'}]->(c100)
-MERGE (c100)-[:SENT {note: 'High velocity cash transfer'}]->(txn1)
-MERGE (c100)-[:SENT {note: 'Additional structured transfer'}]->(txn2)
-MERGE (txn1)-[:COUNTERPARTY {note: 'Transfer to beneficiary account'}]->(a777)
+// --- Ownership ---
+MATCH (cust_100:Customer {customer_id: 'cust-100'}), (acct_100:Account {account_id: 'acct-100'}) MERGE (cust_100)-[:OWNS]->(acct_100);
+MATCH (cust_101:Customer {customer_id: 'cust-101'}), (acct_101:Account {account_id: 'acct-101'}) MERGE (cust_101)-[:OWNS]->(acct_101);
+MATCH (cust_102:Customer {customer_id: 'cust-102'}), (acct_102:Account {account_id: 'acct-102'}) MERGE (cust_102)-[:OWNS]->(acct_102);
+MATCH (cust_103:Customer {customer_id: 'cust-103'}), (acct_103:Account {account_id: 'acct-103'}) MERGE (cust_103)-[:OWNS]->(acct_103);
+MATCH (cust_104:Customer {customer_id: 'cust-104'}), (acct_104:Account {account_id: 'acct-104'}) MERGE (cust_104)-[:OWNS]->(acct_104);
+MATCH (cust_105:Customer {customer_id: 'cust-105'}), (acct_105:Account {account_id: 'acct-105'}) MERGE (cust_105)-[:OWNS]->(acct_105);
+MATCH (cust_106:Customer {customer_id: 'cust-106'}), (acct_106:Account {account_id: 'acct-106'}) MERGE (cust_106)-[:OWNS]->(acct_106);
+MATCH (cust_107:Customer {customer_id: 'cust-107'}), (acct_107:Account {account_id: 'acct-107'}) MERGE (cust_107)-[:OWNS]->(acct_107);
+MATCH (cust_108:Customer {customer_id: 'cust-108'}), (acct_108:Account {account_id: 'acct-108'}) MERGE (cust_108)-[:OWNS]->(acct_108);
+MATCH (cust_109:Customer {customer_id: 'cust-109'}), (acct_109:Account {account_id: 'acct-109'}) MERGE (cust_109)-[:OWNS]->(acct_109);
+MATCH (cust_110:Customer {customer_id: 'cust-110'}), (acct_110:Account {account_id: 'acct-110'}) MERGE (cust_110)-[:OWNS]->(acct_110);
+MATCH (cust_111:Customer {customer_id: 'cust-111'}), (acct_111:Account {account_id: 'acct-111'}) MERGE (cust_111)-[:OWNS]->(acct_111);
+MATCH (cust_112:Customer {customer_id: 'cust-112'}), (acct_112:Account {account_id: 'acct-112'}) MERGE (cust_112)-[:OWNS]->(acct_112);
+MATCH (cust_113:Customer {customer_id: 'cust-113'}), (acct_113:Account {account_id: 'acct-113'}) MERGE (cust_113)-[:OWNS]->(acct_113);
+MATCH (cust_114:Customer {customer_id: 'cust-114'}), (acct_114:Account {account_id: 'acct-114'}) MERGE (cust_114)-[:OWNS]->(acct_114);
+MATCH (cust_115:Customer {customer_id: 'cust-115'}), (acct_115:Account {account_id: 'acct-115'}) MERGE (cust_115)-[:OWNS]->(acct_115);
+MATCH (cust_116:Customer {customer_id: 'cust-116'}), (acct_116:Account {account_id: 'acct-116'}) MERGE (cust_116)-[:OWNS]->(acct_116);
+MATCH (cust_117:Customer {customer_id: 'cust-117'}), (acct_117:Account {account_id: 'acct-117'}) MERGE (cust_117)-[:OWNS]->(acct_117);
+MATCH (cust_118:Customer {customer_id: 'cust-118'}), (acct_118:Account {account_id: 'acct-118'}) MERGE (cust_118)-[:OWNS]->(acct_118);
+MATCH (cust_119:Customer {customer_id: 'cust-119'}), (acct_119:Account {account_id: 'acct-119'}) MERGE (cust_119)-[:OWNS]->(acct_119);
+MATCH (cust_120:Customer {customer_id: 'cust-120'}), (acct_120:Account {account_id: 'acct-120'}) MERGE (cust_120)-[:OWNS]->(acct_120);
+MATCH (cust_121:Customer {customer_id: 'cust-121'}), (acct_121:Account {account_id: 'acct-121'}) MERGE (cust_121)-[:OWNS]->(acct_121);
+MATCH (cust_122:Customer {customer_id: 'cust-122'}), (acct_122:Account {account_id: 'acct-122'}) MERGE (cust_122)-[:OWNS]->(acct_122);
+MATCH (cust_123:Customer {customer_id: 'cust-123'}), (acct_123:Account {account_id: 'acct-123'}) MERGE (cust_123)-[:OWNS]->(acct_123);
+MATCH (cust_124:Customer {customer_id: 'cust-124'}), (acct_124:Account {account_id: 'acct-124'}) MERGE (cust_124)-[:OWNS]->(acct_124);
+MATCH (cust_200:Customer {customer_id: 'cust-200'}), (acct_200:Account {account_id: 'acct-200'}) MERGE (cust_200)-[:OWNS]->(acct_200);
+MATCH (cust_300:Customer {customer_id: 'cust-300'}), (acct_300:Account {account_id: 'acct-300'}) MERGE (cust_300)-[:OWNS]->(acct_300);
+MATCH (cust_400:Customer {customer_id: 'cust-400'}), (acct_400:Account {account_id: 'acct-400'}) MERGE (cust_400)-[:OWNS]->(acct_400);
+MATCH (cust_500:Customer {customer_id: 'cust-500'}), (acct_500:Account {account_id: 'acct-500'}) MERGE (cust_500)-[:OWNS]->(acct_500);
+MATCH (cust_600:Customer {customer_id: 'cust-600'}), (acct_600:Account {account_id: 'acct-600'}) MERGE (cust_600)-[:OWNS]->(acct_600);
 
-// Disconnected scenario for negative evidence path.
-MERGE (alert2)-[:TARGETS {note: 'Alert targets customer cust-200'}]->(c200)
+// --- Transactions ---
+MATCH (src:Account {account_id: 'acct-108'}), (dst:Account {account_id: 'acct-109'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 132.84, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-109'}), (dst:Account {account_id: 'acct-101'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 2608.65, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-107'}), (dst:Account {account_id: 'acct-113'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 4688.41, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-113'}), (dst:Account {account_id: 'acct-118'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 1852.59, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-108'}), (dst:Account {account_id: 'acct-119'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'deposit', amount: 7361.97, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-112'}), (dst:Account {account_id: 'acct-120'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 1780.54, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-105'}), (dst:Account {account_id: 'acct-111'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 12902.12, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-117'}), (dst:Account {account_id: 'acct-103'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3826.58, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-111'}), (dst:Account {account_id: 'acct-124'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3497.55, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-106'}), (dst:Account {account_id: 'acct-118'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 2587.33, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-120'}), (dst:Account {account_id: 'acct-115'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 933.12, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-108'}), (dst:Account {account_id: 'acct-121'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'deposit', amount: 5924.46, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-117'}), (dst:Account {account_id: 'acct-112'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3698.2, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-121'}), (dst:Account {account_id: 'acct-101'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 11664.42, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-107'}), (dst:Account {account_id: 'acct-111'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 4746.69, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-113'}), (dst:Account {account_id: 'acct-102'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 4202.22, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-105'}), (dst:Account {account_id: 'acct-124'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 1092.1, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-107'}), (dst:Account {account_id: 'acct-104'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 2393.61, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-100'}), (dst:Account {account_id: 'acct-110'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 10750.42, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-111'}), (dst:Account {account_id: 'acct-106'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 825.52, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-109'}), (dst:Account {account_id: 'acct-106'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 1106.84, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-117'}), (dst:Account {account_id: 'acct-104'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 794.56, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-101'}), (dst:Account {account_id: 'acct-112'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 2309.23, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-105'}), (dst:Account {account_id: 'acct-106'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3794.36, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-112'}), (dst:Account {account_id: 'acct-115'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 599.2, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-111'}), (dst:Account {account_id: 'acct-110'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 8313.39, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-109'}), (dst:Account {account_id: 'acct-110'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 2158.88, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-100'}), (dst:Account {account_id: 'acct-122'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 2506.37, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-118'}), (dst:Account {account_id: 'acct-104'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 783.01, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-116'}), (dst:Account {account_id: 'acct-112'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 4701.6, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-102'}), (dst:Account {account_id: 'acct-115'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3514.32, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-106'}), (dst:Account {account_id: 'acct-103'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3522.6, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-106'}), (dst:Account {account_id: 'acct-124'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 4635.21, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-119'}), (dst:Account {account_id: 'acct-114'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 1162.47, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-122'}), (dst:Account {account_id: 'acct-103'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 1562.71, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-102'}), (dst:Account {account_id: 'acct-122'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'deposit', amount: 5054.85, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-110'}), (dst:Account {account_id: 'acct-118'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 1156.7, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-110'}), (dst:Account {account_id: 'acct-122'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'deposit', amount: 5709.35, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-121'}), (dst:Account {account_id: 'acct-100'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3364.21, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-121'}), (dst:Account {account_id: 'acct-119'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 11689.0, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-116'}), (dst:Account {account_id: 'acct-102'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'boleto', amount: 1889.06, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-116'}), (dst:Account {account_id: 'acct-123'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 2232.33, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-113'}), (dst:Account {account_id: 'acct-116'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 16804.85, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-119'}), (dst:Account {account_id: 'acct-100'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 2727.46, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-100'}), (dst:Account {account_id: 'acct-114'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 12887.91, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-101'}), (dst:Account {account_id: 'acct-120'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3514.03, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-102'}), (dst:Account {account_id: 'acct-123'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3873.03, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-122'}), (dst:Account {account_id: 'acct-114'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 1137.26, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-118'}), (dst:Account {account_id: 'acct-120'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 3773.25, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-112'}), (dst:Account {account_id: 'acct-123'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 436.56, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-119'}), (dst:Account {account_id: 'acct-111'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 517.24, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-300'}), (dst:Account {account_id: 'acct-301'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 9800, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-301'}), (dst:Account {account_id: 'acct-302'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 9700, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-302'}), (dst:Account {account_id: 'acct-303'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 9600, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-303'}), (dst:Account {account_id: 'acct-300'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'ted', amount: 9500, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-400'}), (dst:Account {account_id: 'acct-401'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 950, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-400'}), (dst:Account {account_id: 'acct-402'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 945, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-400'}), (dst:Account {account_id: 'acct-403'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 940, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-400'}), (dst:Account {account_id: 'acct-404'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 935, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-400'}), (dst:Account {account_id: 'acct-405'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 930, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-400'}), (dst:Account {account_id: 'acct-406'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 925, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-500'}), (dst:Account {account_id: 'acct-108'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 640.0, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-601'}), (dst:Account {account_id: 'acct-600'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 910, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-602'}), (dst:Account {account_id: 'acct-600'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 906, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-603'}), (dst:Account {account_id: 'acct-600'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 902, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-604'}), (dst:Account {account_id: 'acct-600'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 898, currency: 'BRL'}]->(dst);
+MATCH (src:Account {account_id: 'acct-605'}), (dst:Account {account_id: 'acct-600'}) MERGE (src)-[:TRANSFERRED_TO {channel: 'pix', amount: 894, currency: 'BRL'}]->(dst);
+
+// --- Monitoring alerts (neutral triggers - no typology hint) ---
+MERGE (alert_001:Alert {alert_id: 'alert-001', reason: 'periodic-review', description: 'Routine compliance review of an active account.'});
+MATCH (alert_001:Alert {alert_id: 'alert-001'}), (cust_100:Customer {customer_id: 'cust-100'}) MERGE (alert_001)-[:TARGETS]->(cust_100);
+MERGE (alert_002:Alert {alert_id: 'alert-002', reason: 'new-account-monitoring', description: 'New account monitoring window; limited history reviewed.'});
+MATCH (alert_002:Alert {alert_id: 'alert-002'}), (cust_200:Customer {customer_id: 'cust-200'}) MERGE (alert_002)-[:TARGETS]->(cust_200);
+MERGE (alert_003:Alert {alert_id: 'alert-003', reason: 'large-value-transaction', description: 'A transfer above the monitoring threshold was flagged for review.'});
+MATCH (alert_003:Alert {alert_id: 'alert-003'}), (cust_300:Customer {customer_id: 'cust-300'}) MERGE (alert_003)-[:TARGETS]->(cust_300);
+MERGE (alert_004:Alert {alert_id: 'alert-004', reason: 'velocity-alert', description: 'Multiple outgoing transfers in a short window triggered a velocity rule.'});
+MATCH (alert_004:Alert {alert_id: 'alert-004'}), (cust_400:Customer {customer_id: 'cust-400'}) MERGE (alert_004)-[:TARGETS]->(cust_400);
+MERGE (alert_005:Alert {alert_id: 'alert-005', reason: 'manual-referral', description: 'Manually referred for review by a branch employee.'});
+MATCH (alert_005:Alert {alert_id: 'alert-005'}), (cust_500:Customer {customer_id: 'cust-500'}) MERGE (alert_005)-[:TARGETS]->(cust_500);
+MERGE (alert_006:Alert {alert_id: 'alert-006', reason: 'velocity-alert', description: 'Multiple incoming transfers in a short window triggered a velocity rule.'});
+MATCH (alert_006:Alert {alert_id: 'alert-006'}), (cust_600:Customer {customer_id: 'cust-600'}) MERGE (alert_006)-[:TARGETS]->(cust_600);
