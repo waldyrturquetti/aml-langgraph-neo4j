@@ -415,17 +415,22 @@ def _build_dynamodb_seed(customers, accounts, transactions, alerts: list[AlertSe
             {
                 "alert_id": seed.alert_id,
                 "customer_id": seed.customer_id,
-                "reason": seed.reason,
-                "description": seed.description,
+                # The snapshot's reason/description/insight_* fields feed the
+                # Portuguese report (report.py); Neo4j's Alert.reason/
+                # description (seed.reason/seed.description, from
+                # data/neo4j/seed.cypher) stay in English, mirroring what
+                # register_alert does for alerts created at runtime.
+                "reason": response.alert_reason_pt or seed.reason,
+                "description": response.summary_pt or seed.description,
                 "evidence": [
                     {"kind": e.kind, "subject": e.subject, "details": e.details, "source": e.source}
                     for e in evidence
                 ],
                 "risk": {"level": risk_level, "rationale": risk_rationale, "typologies": typologies},
                 "insight_mode": "static",
-                "insight_summary": response.summary,
-                "insight_key_observations": response.key_observations,
-                "alert_reason": response.alert_reason,
+                "insight_summary": response.summary_pt,
+                "insight_key_observations": response.key_observations_pt,
+                "alert_reason": response.alert_reason_pt,
                 "created_at": "2026-07-30T00:00:00+00:00",
             }
         )

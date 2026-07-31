@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from aml_alert_triage.config import AppConfig
 from aml_alert_triage.models import EvidenceItem, RiskAssessment
 from aml_alert_triage.report import generate_alert_report, render_alert_report
 from aml_alert_triage.snapshot_store import AlertSnapshot, AlertSnapshotStore
@@ -20,37 +19,73 @@ def _make_snapshot(insight_mode: str = "static") -> AlertSnapshot:
     return AlertSnapshot(
         alert_id="alert-auto-cust-200",
         customer_id="cust-200",
-        reason="cycle-detected",
-        description="Directed fund-transfer cycle detected.",
+        reason="Padrão(ões) estrutural(is) detectado(s): Ciclo de transferências.",
+        description="Foi detectado um ciclo direcionado retornando à conta de origem.",
         evidence=[
-            EvidenceItem(kind="cycle", subject="cust-200", details="4-hop cycle.", source="neo4j"),
-            EvidenceItem(kind="ted", subject="acct-201", details="TED transfer of 100.00 BRL to acct-201.", source="neo4j"),
+            EvidenceItem(
+                kind="cycle",
+                subject="cust-200",
+                details="Detected a directed fund-transfer cycle spanning 4 hop(s) that returns to the originating account.",
+                source="neo4j",
+            ),
+            EvidenceItem(
+                kind="ted",
+                subject="acct-201",
+                details="TED transfer of 100.00 BRL to acct-201.",
+                source="neo4j",
+            ),
         ],
         risk=RiskAssessment(level="high", rationale="Structural graph pattern(s) detected: cycle.", typologies=["cycle"]),
         insight_mode=insight_mode,
-        insight_summary="A directed cycle was detected returning to the originating account.",
-        insight_key_observations=["Cycle spans 4 hops."],
-        alert_reason="Cycle detected in transfer graph.",
+        insight_summary="Foi detectado um ciclo direcionado retornando à conta de origem.",
+        insight_key_observations=["O ciclo tem 4 saltos."],
+        alert_reason="Padrão(ões) estrutural(is) detectado(s): Ciclo de transferências.",
         created_at="2026-07-30T00:00:00+00:00",
     )
 
 
-def test_render_alert_report_includes_key_sections() -> None:
+def test_render_alert_report_includes_key_sections_in_portuguese() -> None:
     markdown = render_alert_report(_make_snapshot())
 
-    assert "# Alert Investigation Report: alert-auto-cust-200" in markdown
+    assert "# Relatório de Investigação de Alerta: alert-auto-cust-200" in markdown
     assert "cust-200" in markdown
-    assert "Static (rule-based) analysis" in markdown
-    assert "Cycle spans 4 hops." in markdown
-    assert "Cycle detected in transfer graph." in markdown
-    assert "| cycle | cust-200 | 4-hop cycle. | neo4j |" in markdown
-    assert "acct-201" in markdown
+    assert "Análise estática (baseada em regras)" in markdown
+    assert "O ciclo tem 4 saltos." in markdown
+    assert "Padrão(ões) estrutural(is) detectado(s): Ciclo de transferências." in markdown
+    assert "Ciclo de transferências" in markdown  # translated risk typology label
+
+
+def test_render_alert_report_translates_evidence_details() -> None:
+    markdown = render_alert_report(_make_snapshot())
+
+    # Cycle evidence, translated from the fixed English template.
+    assert "Detectado um ciclo direcionado de transferências com 4 salto(s)" in markdown
+    # Transaction evidence, translated from format_transaction_details' template.
+    assert "Transferência TED de 100.00 BRL para acct-201." in markdown
+    # Original English text should not leak into the rendered table.
+    assert "Detected a directed fund-transfer cycle" not in markdown
+    assert "TED transfer of 100.00 BRL to acct-201." not in markdown
+
+
+def test_render_alert_report_translates_risk_rationale() -> None:
+    markdown = render_alert_report(_make_snapshot())
+
+    assert "Padrão(ões) estrutural(is) detectado(s): Ciclo de transferências." in markdown
 
 
 def test_render_alert_report_labels_llm_provider() -> None:
     markdown = render_alert_report(_make_snapshot(insight_mode="openai"))
 
-    assert "LLM analysis (provider: openai)" in markdown
+    assert "Análise via LLM (provedor: openai)" in markdown
+
+
+def test_render_alert_report_includes_cypher_visualization_query() -> None:
+    markdown = render_alert_report(_make_snapshot())
+
+    assert "```cypher" in markdown
+    assert "MATCH (c:Customer {customer_id: 'cust-200'})-[:OWNS]->(acct)" in markdown
+    assert "TRANSFERRED_TO*1..3" in markdown
+    assert "MATCH (a:Alert {alert_id: 'alert-auto-cust-200'})-[:TARGETS]->(c:Customer) RETURN a, c;" in markdown
 
 
 def test_generate_alert_report_writes_file(tmp_path: Path) -> None:

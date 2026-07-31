@@ -3,6 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
+from dotenv import load_dotenv
+
+# Loads .env into the process environment on first import (does not override
+# variables already set in the real environment). Without this, a .env file
+# has no effect at all - AppConfig.from_env() only ever reads os.getenv.
+load_dotenv()
+
 
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)

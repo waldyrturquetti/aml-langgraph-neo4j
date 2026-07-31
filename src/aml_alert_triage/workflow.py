@@ -93,6 +93,9 @@ def generate_insights(state: TriageState, llm_adapter: LLMAdapter) -> TriageStat
             error=None,
             recommend_alert=insight_response.recommend_alert,
             alert_reason=insight_response.alert_reason,
+            summary_pt=insight_response.summary_pt,
+            key_observations_pt=insight_response.key_observations_pt,
+            alert_reason_pt=insight_response.alert_reason_pt,
         )
         step = "insights-generated"
     except Exception as exc:
@@ -103,6 +106,9 @@ def generate_insights(state: TriageState, llm_adapter: LLMAdapter) -> TriageStat
             error=str(exc),
             recommend_alert=False,
             alert_reason="",
+            summary_pt="Nenhum insight de LLM está disponível. Continue com a triagem baseada apenas em evidências.",
+            key_observations_pt=["Os insights de LLM não estão disponíveis para esta execução."],
+            alert_reason_pt="",
         )
         step = "insights-fallback"
 
@@ -161,18 +167,24 @@ def register_alert(
                 # compute it locally, purely for the snapshot, without
                 # changing the actual node ordering.
                 snapshot_risk = assess_risk(state).risk
+                # The snapshot (and therefore the Markdown report rendered
+                # from it) always carries the Portuguese text - Neo4j's
+                # Alert.reason/description (via `record`, above) and the
+                # CLI JSON response stay in English regardless of provider.
                 snapshot_store.save_snapshot(
                     AlertSnapshot(
                         alert_id=record.alert_id,
                         customer_id=state.customer_id,
-                        reason=record.reason,
-                        description=record.description,
+                        reason=state.insights.alert_reason_pt or record.reason,
+                        description=state.insights.summary_pt or record.description,
                         evidence=list(state.evidence),
                         risk=snapshot_risk,
                         insight_mode=_insight_mode(config),
-                        insight_summary=state.insights.summary,
-                        insight_key_observations=list(state.insights.key_observations),
-                        alert_reason=state.insights.alert_reason,
+                        insight_summary=state.insights.summary_pt or state.insights.summary,
+                        insight_key_observations=list(
+                            state.insights.key_observations_pt or state.insights.key_observations
+                        ),
+                        alert_reason=state.insights.alert_reason_pt or state.insights.alert_reason,
                     )
                 )
             except Exception as exc:

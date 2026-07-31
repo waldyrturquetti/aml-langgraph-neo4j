@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from typing import Protocol
 
@@ -27,6 +27,13 @@ class InsightResponse:
     key_observations: list[str]
     recommend_alert: bool = False
     alert_reason: str = ""
+    # Portuguese (pt-BR) counterparts of summary/key_observations/alert_reason
+    # - same facts and conclusion, translated - used only by the alert
+    # investigation report (report.py), never by the CLI JSON response or
+    # what gets written to Neo4j, which stay in English.
+    summary_pt: str = ""
+    key_observations_pt: list[str] = field(default_factory=list)
+    alert_reason_pt: str = ""
 
 
 class LLMAdapter(Protocol):
@@ -48,6 +55,8 @@ class RuleBasedLLMAdapter:
     model: str
 
     def generate_insights(self, request: InsightRequest) -> InsightResponse:
+        from .i18n_pt import KIND_LABELS_PT, translate_evidence_summary_pt
+
         high_risk_items = [item for item in request.evidence if item.kind in HIGH_RISK_EVIDENCE_KINDS]
 
         if request.evidence:
@@ -55,26 +64,47 @@ class RuleBasedLLMAdapter:
                 f"Evidence indicates connected activity for customer {request.customer_id}; "
                 "analyst review should prioritize linked parties and repeated transactions."
             )
+            summary_pt = (
+                f"As evidências indicam atividade conectada para o cliente {request.customer_id}; "
+                "a revisão do analista deve priorizar partes relacionadas e transações repetidas."
+            )
             observations = [
                 f"Analyzed {len(request.evidence)} related evidence item(s).",
                 f"Top evidence summary: {request.evidence_summary}",
+            ]
+            observations_pt = [
+                f"Analisados {len(request.evidence)} item(ns) de evidência relacionados.",
+                f"Resumo principal da evidência: {translate_evidence_summary_pt(request.evidence)}",
             ]
         else:
             summary = (
                 f"No connected graph evidence was found for customer {request.customer_id}; "
                 "continue monitoring and collect additional context before escalation."
             )
+            summary_pt = (
+                f"Nenhuma evidência de grafo conectada foi encontrada para o cliente {request.customer_id}; "
+                "continue monitorando e colete mais contexto antes de escalar."
+            )
             observations = [
                 "Graph query returned no related entities for this alert.",
                 "Disposition should remain evidence-conservative.",
             ]
+            observations_pt = [
+                "A consulta ao grafo não retornou entidades relacionadas para este alerta.",
+                "A disposição deve permanecer conservadora quanto à evidência.",
+            ]
 
         if request.user_prompt:
             observations.append(f"User prompt focus: {request.user_prompt}")
+            observations_pt.append(f"Foco solicitado pelo usuário: {request.user_prompt}")
 
         recommend_alert = bool(high_risk_items)
-        alert_reason = (
-            "Structural pattern(s) detected: " + ", ".join(sorted({item.kind for item in high_risk_items})) + "."
+        detected_kinds = sorted({item.kind for item in high_risk_items})
+        alert_reason = "Structural pattern(s) detected: " + ", ".join(detected_kinds) + "." if recommend_alert else ""
+        alert_reason_pt = (
+            "Padrão(ões) estrutural(is) detectado(s): "
+            + ", ".join(sorted({KIND_LABELS_PT.get(kind, kind) for kind in detected_kinds}))
+            + "."
             if recommend_alert
             else ""
         )
@@ -84,6 +114,9 @@ class RuleBasedLLMAdapter:
             key_observations=observations,
             recommend_alert=recommend_alert,
             alert_reason=alert_reason,
+            summary_pt=summary_pt,
+            key_observations_pt=observations_pt,
+            alert_reason_pt=alert_reason_pt,
         )
 
 
@@ -97,8 +130,22 @@ INSIGHT_RESPONSE_SCHEMA = {
         },
         "recommend_alert": {"type": "boolean"},
         "alert_reason": {"type": "string"},
+        "summary_pt": {"type": "string"},
+        "key_observations_pt": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "alert_reason_pt": {"type": "string"},
     },
-    "required": ["summary", "key_observations", "recommend_alert", "alert_reason"],
+    "required": [
+        "summary",
+        "key_observations",
+        "recommend_alert",
+        "alert_reason",
+        "summary_pt",
+        "key_observations_pt",
+        "alert_reason_pt",
+    ],
     "additionalProperties": False,
 }
 
@@ -110,7 +157,11 @@ ANTHROPIC_SYSTEM_PROMPT = (
     "suspicious pattern (e.g. a transfer cycle, structuring, or proximity to an "
     "already-alerted customer); never recommend an alert from absence of evidence "
     "or speculation. When recommend_alert is true, alert_reason must briefly cite "
-    "the specific evidence that justifies it."
+    "the specific evidence that justifies it. "
+    "In addition to the English summary/key_observations/alert_reason fields, also "
+    "provide summary_pt, key_observations_pt, and alert_reason_pt: faithful Brazilian "
+    "Portuguese (pt-BR) translations of that same content - the same facts and "
+    "conclusion, not a different analysis - for a Brazilian analyst-facing report."
 )
 
 OPENAI_SYSTEM_PROMPT = ANTHROPIC_SYSTEM_PROMPT
@@ -165,6 +216,9 @@ class AnthropicLLMAdapter:
             key_observations=[str(item) for item in payload["key_observations"]],
             recommend_alert=bool(payload.get("recommend_alert", False)),
             alert_reason=str(payload.get("alert_reason", "")),
+            summary_pt=str(payload.get("summary_pt", "")),
+            key_observations_pt=[str(item) for item in payload.get("key_observations_pt", [])],
+            alert_reason_pt=str(payload.get("alert_reason_pt", "")),
         )
 
 
@@ -181,7 +235,13 @@ class OpenAILLMAdapter:
 
     model: str = DEFAULT_OPENAI_MODEL
     timeout_seconds: int = 15
-    max_tokens: int = 1024
+    # Reasoning-capable models (o-series, gpt-5) spend part of this budget on
+    # internal "thinking" tokens before producing the visible JSON answer -
+    # with reasoning_effort set, 1024 total tokens can be entirely consumed
+    # by reasoning, leaving an empty response and a confusing JSON-parse
+    # failure. 4096 leaves enough headroom for reasoning plus the (small)
+    # structured answer.
+    max_tokens: int = 4096
     reasoning_effort: str | None = None
     client: object | None = None
 
@@ -226,6 +286,13 @@ class OpenAILLMAdapter:
         response = client.chat.completions.create(**kwargs)
 
         text = response.choices[0].message.content
+        if not text:
+            finish_reason = response.choices[0].finish_reason
+            raise RuntimeError(
+                f"OpenAI returned an empty response (finish_reason={finish_reason!r}). "
+                "This usually means max_tokens was too small for the model's reasoning "
+                "budget - try raising it."
+            )
         payload = json.loads(text)
 
         return InsightResponse(
@@ -233,6 +300,9 @@ class OpenAILLMAdapter:
             key_observations=[str(item) for item in payload["key_observations"]],
             recommend_alert=bool(payload.get("recommend_alert", False)),
             alert_reason=str(payload.get("alert_reason", "")),
+            summary_pt=str(payload.get("summary_pt", "")),
+            key_observations_pt=[str(item) for item in payload.get("key_observations_pt", [])],
+            alert_reason_pt=str(payload.get("alert_reason_pt", "")),
         )
 
 

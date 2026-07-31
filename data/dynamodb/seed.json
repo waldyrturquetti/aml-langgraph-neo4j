@@ -2,8 +2,8 @@
   {
     "alert_id": "alert-auto-cust-200",
     "customer_id": "cust-200",
-    "reason": "cycle-detected",
-    "description": "Directed fund-transfer cycle detected returning to the originating account after periodic monitoring flagged unusual round-trip activity.",
+    "reason": "Padr\u00e3o(\u00f5es) estrutural(is) detectado(s): Ciclo de transfer\u00eancias.",
+    "description": "As evid\u00eancias indicam atividade conectada para o cliente cust-200; a revis\u00e3o do analista deve priorizar partes relacionadas e transa\u00e7\u00f5es repetidas.",
     "evidence": [
       {
         "kind": "ted",
@@ -44,19 +44,19 @@
       ]
     },
     "insight_mode": "static",
-    "insight_summary": "Evidence indicates connected activity for customer cust-200; analyst review should prioritize linked parties and repeated transactions.",
+    "insight_summary": "As evid\u00eancias indicam atividade conectada para o cliente cust-200; a revis\u00e3o do analista deve priorizar partes relacionadas e transa\u00e7\u00f5es repetidas.",
     "insight_key_observations": [
-      "Analyzed 5 related evidence item(s).",
-      "Top evidence summary: TED transfer of 11111.20 BRL to acct-200-c200h1.; TED transfer of 10882.39 BRL from acct-200-c200h2.; TED transfer of 4150.00 BRL from acct-proximity-bridge.; TED transfer of 4200.00 BRL to acct-129.; Detected a directed fund-transfer cycle spanning 3 hop(s) that returns to the originating account."
+      "Analisados 5 item(ns) de evid\u00eancia relacionados.",
+      "Resumo principal da evid\u00eancia: Transfer\u00eancia TED de 11111.20 BRL para acct-200-c200h1.; Transfer\u00eancia TED de 10882.39 BRL de acct-200-c200h2.; Transfer\u00eancia TED de 4150.00 BRL de acct-proximity-bridge.; Transfer\u00eancia TED de 4200.00 BRL para acct-129.; Detectado um ciclo direcionado de transfer\u00eancias com 3 salto(s) que retorna \u00e0 conta de origem."
     ],
-    "alert_reason": "Structural pattern(s) detected: cycle.",
+    "alert_reason": "Padr\u00e3o(\u00f5es) estrutural(is) detectado(s): Ciclo de transfer\u00eancias.",
     "created_at": "2026-07-30T00:00:00+00:00"
   },
   {
     "alert_id": "alert-auto-cust-207",
     "customer_id": "cust-207",
-    "reason": "structuring-fanout-detected",
-    "description": "Multiple distinct outgoing transfers just under a reporting threshold, consistent with structuring/pulverization.",
+    "reason": "Padr\u00e3o(\u00f5es) estrutural(is) detectado(s): Estrutura\u00e7\u00e3o (fan-out).",
+    "description": "As evid\u00eancias indicam atividade conectada para o cliente cust-207; a revis\u00e3o do analista deve priorizar partes relacionadas e transa\u00e7\u00f5es repetidas.",
     "evidence": [
       {
         "kind": "pix",
@@ -103,12 +103,12 @@
       ]
     },
     "insight_mode": "static",
-    "insight_summary": "Evidence indicates connected activity for customer cust-207; analyst review should prioritize linked parties and repeated transactions.",
+    "insight_summary": "As evid\u00eancias indicam atividade conectada para o cliente cust-207; a revis\u00e3o do analista deve priorizar partes relacionadas e transa\u00e7\u00f5es repetidas.",
     "insight_key_observations": [
-      "Analyzed 6 related evidence item(s).",
-      "Top evidence summary: PIX transfer of 939.42 BRL to acct-207-c207b1.; PIX transfer of 936.90 BRL to acct-207-c207b2.; PIX transfer of 927.88 BRL to acct-207-c207b3.; PIX transfer of 932.29 BRL to acct-207-c207b4.; PIX transfer of 926.98 BRL to acct-207-c207b5.; Detected 5 distinct outgoing transfers (possible structuring/pulverization); sample beneficiaries: ['acct-207-c207b1', 'acct-207-c207b2', 'acct-207-c207b3', 'acct-207-c207b4', 'acct-207-c207b5']."
+      "Analisados 6 item(ns) de evid\u00eancia relacionados.",
+      "Resumo principal da evid\u00eancia: Transfer\u00eancia PIX de 939.42 BRL para acct-207-c207b1.; Transfer\u00eancia PIX de 936.90 BRL para acct-207-c207b2.; Transfer\u00eancia PIX de 927.88 BRL para acct-207-c207b3.; Transfer\u00eancia PIX de 932.29 BRL para acct-207-c207b4.; Transfer\u00eancia PIX de 926.98 BRL para acct-207-c207b5.; Detectadas 5 transfer\u00eancias distintas de sa\u00edda (poss\u00edvel estrutura\u00e7\u00e3o/pulveriza\u00e7\u00e3o); amostra de benefici\u00e1rios: ['acct-207-c207b1', 'acct-207-c207b2', 'acct-207-c207b3', 'acct-207-c207b4', 'acct-207-c207b5']."
     ],
-    "alert_reason": "Structural pattern(s) detected: structuring-fanout.",
+    "alert_reason": "Padr\u00e3o(\u00f5es) estrutural(is) detectado(s): Estrutura\u00e7\u00e3o (fan-out).",
     "created_at": "2026-07-30T00:00:00+00:00"
   }
 ]

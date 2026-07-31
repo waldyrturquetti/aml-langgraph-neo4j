@@ -53,13 +53,14 @@ class _FakeOpenAIMessage:
 
 
 class _FakeOpenAIChoice:
-    def __init__(self, content: str) -> None:
+    def __init__(self, content: str, finish_reason: str = "stop") -> None:
         self.message = _FakeOpenAIMessage(content)
+        self.finish_reason = finish_reason
 
 
 class _FakeOpenAIResponse:
-    def __init__(self, content: str) -> None:
-        self.choices = [_FakeOpenAIChoice(content)]
+    def __init__(self, content: str, finish_reason: str = "stop") -> None:
+        self.choices = [_FakeOpenAIChoice(content, finish_reason)]
 
 
 class _FakeOpenAICompletions:
@@ -205,12 +206,39 @@ def test_rule_based_adapter_does_not_recommend_alert_for_ordinary_evidence() -> 
     assert response.alert_reason == ""
 
 
+def test_rule_based_adapter_also_produces_portuguese_text() -> None:
+    evidence = [EvidenceItem(kind="cycle", subject="cust-300", details="4-hop cycle.", source="neo4j")]
+    adapter = RuleBasedLLMAdapter(provider="rule-based", model="local-insight-summarizer")
+
+    response = adapter.generate_insights(_make_request(evidence=evidence, user_prompt="Focus on cycles"))
+
+    assert response.summary_pt
+    assert response.summary_pt != response.summary
+    assert response.key_observations_pt
+    assert response.alert_reason_pt
+    assert "Ciclo" in response.alert_reason_pt
+    assert any("Foco solicitado" in obs for obs in response.key_observations_pt)
+
+
+def test_rule_based_adapter_pt_text_for_no_evidence() -> None:
+    adapter = RuleBasedLLMAdapter(provider="rule-based", model="local-insight-summarizer")
+
+    response = adapter.generate_insights(_make_request(evidence=[]))
+
+    assert response.recommend_alert is False
+    assert response.alert_reason_pt == ""
+    assert "Nenhuma evidência" in response.summary_pt
+
+
 def test_anthropic_adapter_sends_expected_request_and_parses_response() -> None:
     payload = {
         "summary": "Linked activity suggests moderate escalation risk.",
         "key_observations": ["Observed repeated linked transactions."],
         "recommend_alert": True,
         "alert_reason": "Cycle detected in transfer graph.",
+        "summary_pt": "A atividade conectada sugere risco moderado de escalonamento.",
+        "key_observations_pt": ["Transações vinculadas repetidas foram observadas."],
+        "alert_reason_pt": "Ciclo detectado no grafo de transferências.",
     }
     fake_client = _FakeAnthropicClient(
         response=_FakeAnthropicResponse(content=[_FakeTextBlock(json.dumps(payload))])
@@ -226,12 +254,34 @@ def test_anthropic_adapter_sends_expected_request_and_parses_response() -> None:
     assert response.key_observations == payload["key_observations"]
     assert response.recommend_alert is True
     assert response.alert_reason == payload["alert_reason"]
+    assert response.summary_pt == payload["summary_pt"]
+    assert response.key_observations_pt == payload["key_observations_pt"]
+    assert response.alert_reason_pt == payload["alert_reason_pt"]
 
     sent = fake_client.messages.last_kwargs
     assert sent["model"] == "claude-sonnet-5"
     assert sent["messages"][0]["role"] == "user"
     assert "acct-001" in sent["messages"][0]["content"]
     assert sent["output_config"]["format"]["type"] == "json_schema"
+
+
+def test_anthropic_adapter_defaults_pt_fields_when_missing_from_payload() -> None:
+    payload = {
+        "summary": "x",
+        "key_observations": [],
+        "recommend_alert": False,
+        "alert_reason": "",
+    }
+    fake_client = _FakeAnthropicClient(
+        response=_FakeAnthropicResponse(content=[_FakeTextBlock(json.dumps(payload))])
+    )
+    adapter = AnthropicLLMAdapter(model="claude-sonnet-5", client=fake_client)
+
+    response = adapter.generate_insights(_make_request())
+
+    assert response.summary_pt == ""
+    assert response.key_observations_pt == []
+    assert response.alert_reason_pt == ""
 
 
 def test_anthropic_adapter_propagates_provider_errors() -> None:
@@ -256,6 +306,9 @@ def test_openai_adapter_sends_expected_request_and_parses_response() -> None:
         "key_observations": ["Six distinct beneficiaries just under threshold."],
         "recommend_alert": True,
         "alert_reason": "Structuring fan-out detected.",
+        "summary_pt": "Estruturação fan-out detectada.",
+        "key_observations_pt": ["Seis beneficiários distintos logo abaixo do limite."],
+        "alert_reason_pt": "Estruturação fan-out detectada.",
     }
     fake_client = _FakeOpenAIClient(response=_FakeOpenAIResponse(json.dumps(payload)))
     adapter = OpenAILLMAdapter(model="gpt-5", timeout_seconds=5, reasoning_effort="medium", client=fake_client)
@@ -269,6 +322,9 @@ def test_openai_adapter_sends_expected_request_and_parses_response() -> None:
     assert response.key_observations == payload["key_observations"]
     assert response.recommend_alert is True
     assert response.alert_reason == payload["alert_reason"]
+    assert response.summary_pt == payload["summary_pt"]
+    assert response.key_observations_pt == payload["key_observations_pt"]
+    assert response.alert_reason_pt == payload["alert_reason_pt"]
 
     sent = fake_client.chat.completions.last_kwargs
     assert sent["model"] == "gpt-5"
@@ -287,6 +343,19 @@ def test_openai_adapter_omits_reasoning_effort_when_unset() -> None:
     adapter.generate_insights(_make_request())
 
     assert "reasoning_effort" not in fake_client.chat.completions.last_kwargs
+
+
+def test_openai_adapter_raises_clear_error_on_empty_content() -> None:
+    # Reproduces a real gotcha: a reasoning-capable model (reasoning_effort
+    # set) can spend its entire max_tokens budget on internal reasoning,
+    # leaving an empty visible response (finish_reason="length") - this
+    # should raise a clear, actionable error instead of a confusing
+    # TypeError from json.loads(None).
+    fake_client = _FakeOpenAIClient(response=_FakeOpenAIResponse("", finish_reason="length"))
+    adapter = OpenAILLMAdapter(model="gpt-5", reasoning_effort="medium", client=fake_client)
+
+    with pytest.raises(RuntimeError, match="empty response"):
+        adapter.generate_insights(_make_request())
 
 
 def test_openai_adapter_propagates_provider_errors() -> None:

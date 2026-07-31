@@ -49,6 +49,11 @@ class InsightResult:
     error: str | None = None
     recommend_alert: bool = False
     alert_reason: str = ""
+    # Portuguese (pt-BR) counterparts, used only by the alert investigation
+    # report - the CLI response and Neo4j stay in English.
+    summary_pt: str = ""
+    key_observations_pt: list[str] = field(default_factory=list)
+    alert_reason_pt: str = ""
 
 
 @dataclass(slots=True)
