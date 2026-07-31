@@ -1,10 +1,10 @@
 """Pure-Python graph pattern detection over the canonical fictional dataset.
 
 This mirrors the Cypher queries in repository.py exactly (same traversal
-roots, same hop semantics, same cycle/fan-out/fan-in definitions) so the
-offline/test code path is a real reimplementation of the live Neo4j query
-logic, not a hand-maintained set of fixtures that can silently drift from
-what the live queries actually compute.
+roots, same hop semantics, same cycle/fan-out/fan-in/proximity definitions)
+so the offline/test code path is a real reimplementation of the live Neo4j
+query logic, not a hand-maintained set of fixtures that can silently drift
+from what Neo4j actually computes.
 """
 
 from __future__ import annotations
@@ -44,6 +44,18 @@ class Transaction:
     currency: str = "BRL"
 
 
+@dataclass(frozen=True, slots=True)
+class AlertSeed:
+    """A pre-registered `Alert` seeded into the fictional dataset, mirrored
+    as both an offline fixture (here) and a live `MERGE (:Alert)-[:TARGETS]->`
+    statement in data/neo4j/seed.cypher, so the two paths never drift."""
+
+    alert_id: str
+    customer_id: str
+    reason: str
+    description: str
+
+
 class GraphDataset:
     """Indexes customers/accounts/transactions for fast pattern queries."""
 
@@ -76,23 +88,36 @@ class GraphDataset:
             seen.extend(self._incoming.get(account_id, []))
         return seen
 
-    def second_hop_transactions(self, account_ids: set[str]) -> tuple[set[str], list[Transaction]]:
-        """Returns (pivot_account_ids, transactions) - the direct counterparties'
-        *other* transactions. Callers must describe these transactions relative
-        to the returned pivot set, not to `account_ids` - none of these
-        transactions touch `account_ids` at all (that's the point), so framing
-        them from the original account's perspective would be meaningless."""
-        direct = self.direct_transactions(account_ids)
-        pivots = {
-            (t.target_account_id if t.source_account_id in account_ids else t.source_account_id) for t in direct
-        }
-        pivots -= account_ids
-        transactions = [
-            t
-            for t in self.direct_transactions(pivots)
-            if t.source_account_id not in account_ids and t.target_account_id not in account_ids
-        ]
-        return pivots, transactions
+    def frontier_hop_transactions(
+        self, frontier: set[str], visited: set[str]
+    ) -> tuple[set[str], list[Transaction]]:
+        """One hop of frontier-expansion BFS: transactions touching
+        `frontier` whose far end has not already been visited. Returns
+        (new_frontier, transactions) - the transactions are this hop's
+        evidence, and `new_frontier` becomes the next hop's starting point.
+
+        Excluding already-visited far ends (which includes the original
+        `frontier` seed accounts from hop 1 onward) is what stops a later
+        hop from re-reporting a transaction back to an already-seen account
+        as if it were new evidence - the same exclusion the original
+        hard-coded 2-hop query applied (`WHERE related <> account`),
+        generalized to arbitrary hop depth.
+        """
+        raw = self.direct_transactions(frontier)
+        seen_keys: set[tuple[str, str, str, float]] = set()
+        new_frontier: set[str] = set()
+        transactions: list[Transaction] = []
+        for txn in raw:
+            key = (txn.source_account_id, txn.target_account_id, txn.channel, txn.amount)
+            if key in seen_keys:
+                continue
+            other = txn.target_account_id if txn.source_account_id in frontier else txn.source_account_id
+            if other in visited:
+                continue
+            seen_keys.add(key)
+            transactions.append(txn)
+            new_frontier.add(other)
+        return new_frontier, transactions
 
     def detect_cycle(self, account_ids: set[str], max_hops: int) -> int | None:
         best: int | None = None
@@ -134,6 +159,34 @@ class GraphDataset:
             return None
         return len(counterparties), sorted(counterparties)[:5]
 
+    def detect_alert_proximity(
+        self, account_ids: set[str], max_hops: int, alerted_customer_ids: set[str], exclude_customer_id: str
+    ) -> list[tuple[str, int]]:
+        """BFS outward from `account_ids` up to `max_hops`, returning
+        (linked_customer_id, hop_distance) for every other customer reached
+        who is a member of `alerted_customer_ids` - i.e. already has an
+        alert. Mirrors repository.py's `_fetch_alert_proximity_evidence`."""
+        frontier = set(account_ids)
+        visited = set(account_ids)
+        found: dict[str, int] = {}
+        for hop in range(1, max_hops + 1):
+            new_frontier, _ = self.frontier_hop_transactions(frontier, visited)
+            for account_id in new_frontier:
+                owner = self._customer_of(account_id)
+                if owner and owner != exclude_customer_id and owner in alerted_customer_ids and owner not in found:
+                    found[owner] = hop
+            visited |= new_frontier
+            if not new_frontier:
+                break
+            frontier = new_frontier
+        return sorted(found.items(), key=lambda item: item[1])
+
+    def _customer_of(self, account_id: str) -> str | None:
+        for account in self.accounts:
+            if account.account_id == account_id:
+                return account.customer_id
+        return None
+
 
 def format_transaction_details(channel: str, amount: float, currency: str, direction: str, counterparty: str) -> str:
     """Single source of truth for evidence text, shared by the live Cypher-record
@@ -164,6 +217,25 @@ def evidence_from_transactions(
             EvidenceItem(kind=txn.channel, subject=subject, details=details + detail_suffix, source="neo4j")
         )
     return items
+
+
+def hop_evidence(dataset: GraphDataset, own_account_ids: set[str], max_hop: int) -> list[EvidenceItem]:
+    """Frontier-expansion BFS outward from `own_account_ids`, up to
+    `max_hop` hops, describing each hop's transactions relative to that
+    hop's own frontier. A faithful reimplementation of repository.py's
+    per-hop Cypher queries, generalizing what used to be two hard-coded
+    hop-1/hop-2 cases to arbitrary depth."""
+    frontier = set(own_account_ids)
+    visited = set(own_account_ids)
+    evidence: list[EvidenceItem] = []
+    for _ in range(max_hop):
+        new_frontier, transactions = dataset.frontier_hop_transactions(frontier, visited)
+        evidence.extend(evidence_from_transactions(transactions, frontier))
+        visited |= new_frontier
+        if not new_frontier:
+            break
+        frontier = new_frontier
+    return evidence
 
 
 def cycle_evidence(dataset: GraphDataset, account_ids: set[str], max_hops: int) -> list[EvidenceItem]:
@@ -221,6 +293,32 @@ def structuring_evidence(
     return items
 
 
+def alert_proximity_evidence(
+    dataset: GraphDataset,
+    account_ids: set[str],
+    max_hops: int,
+    alerted_customer_ids: set[str],
+    exclude_customer_id: str,
+    alert_ids_by_customer: dict[str, str],
+) -> list[EvidenceItem]:
+    links = dataset.detect_alert_proximity(account_ids, max_hops, alerted_customer_ids, exclude_customer_id)
+    items: list[EvidenceItem] = []
+    for linked_customer_id, hops in links:
+        linked_alert_id = alert_ids_by_customer.get(linked_customer_id, "unknown")
+        items.append(
+            EvidenceItem(
+                kind="alert-proximity",
+                subject=exclude_customer_id,
+                details=(
+                    f"Connected within {hops} hop(s) to customer {linked_customer_id}, "
+                    f"who already has alert {linked_alert_id}."
+                ),
+                source="neo4j",
+            )
+        )
+    return items
+
+
 def evidence_for_customer(
     dataset: GraphDataset,
     customer_id: str,
@@ -228,6 +326,9 @@ def evidence_for_customer(
     cycle_max_hops: int,
     fanout_threshold: int,
     fanin_threshold: int,
+    alert_proximity_max_hops: int = 0,
+    alerted_customer_ids: set[str] | None = None,
+    alert_ids_by_customer: dict[str, str] | None = None,
 ) -> list[EvidenceItem]:
     """Mirrors repository.py's `_fetch_evidence_from_neo4j` exactly, but as a
     pure-Python computation over the in-memory dataset - this is what the
@@ -237,11 +338,18 @@ def evidence_for_customer(
     """
     account_ids = dataset.account_ids(customer_id)
 
-    evidence = evidence_from_transactions(dataset.direct_transactions(account_ids), account_ids)
-    if hop_radius >= 2:
-        pivots, second_hop_txns = dataset.second_hop_transactions(account_ids)
-        evidence.extend(evidence_from_transactions(second_hop_txns, pivots))
-
+    evidence = hop_evidence(dataset, account_ids, max(hop_radius, 1))
     evidence.extend(cycle_evidence(dataset, account_ids, cycle_max_hops))
     evidence.extend(structuring_evidence(dataset, account_ids, fanout_threshold, fanin_threshold))
+    if alert_proximity_max_hops > 0 and alerted_customer_ids:
+        evidence.extend(
+            alert_proximity_evidence(
+                dataset,
+                account_ids,
+                alert_proximity_max_hops,
+                alerted_customer_ids,
+                customer_id,
+                alert_ids_by_customer or {},
+            )
+        )
     return evidence

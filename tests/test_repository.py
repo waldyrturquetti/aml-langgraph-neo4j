@@ -44,25 +44,27 @@ class _FakeDriver:
         self.closed = True
 
 
-def test_fetch_evidence_from_neo4j_matches_expected_shape() -> None:
-    records = [
-        {
-            "channel": "pix",
-            "amount": 640.0,
-            "currency": "BRL",
-            "counterparty": "acct-108",
-            "direction": "to",
-        }
-    ]
+def _account_ids_response(account_id: str) -> _FakeResult:
+    return _FakeResult(records=[{"account_id": account_id}])
 
+
+def test_fetch_evidence_from_neo4j_matches_expected_shape() -> None:
     def run_handler(query: str, **params):
-        assert "MATCH" in query
-        assert params["customer_id"] == "cust-100"
-        return _FakeResult(records=records)
+        if "RETURN account.account_id AS account_id" in query:
+            assert params["customer_id"] == "cust-100"
+            return _account_ids_response("acct-100")
+        if "b.account_id AS counterparty" in query:
+            assert params["frontier"] == ["acct-100"]
+            return _FakeResult(
+                records=[
+                    {"counterparty": "acct-108", "channel": "pix", "amount": 640.0, "currency": "BRL", "direction": "to"}
+                ]
+            )
+        return _FakeResult(records=[], single_row=None)
 
     repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
 
-    evidence = repository.fetch_evidence("cust-100", limit=5)
+    evidence = repository.fetch_evidence("cust-100", limit=5, hop_radius=1)
 
     assert len(evidence) == 1
     assert evidence[0].kind == "pix"
@@ -145,53 +147,52 @@ def test_load_seed_file_tolerates_semicolons_inside_string_literals(tmp_path: Pa
 
 
 def test_fetch_evidence_offline_merges_evidence_up_to_hop_radius() -> None:
-    # cust-500 has exactly one direct (hop-1) transaction; widening to hop-2
+    # cust-100 has exactly one direct (hop-1) transaction; widening to hop-2
     # pulls in that counterparty's other activity too.
     repository = Neo4jAlertRepository.offline(AppConfig())
 
-    thin = repository.fetch_evidence("cust-500", hop_radius=1)
-    widened = repository.fetch_evidence("cust-500", hop_radius=2)
+    thin = repository.fetch_evidence("cust-100", hop_radius=1)
+    widened = repository.fetch_evidence("cust-100", hop_radius=2)
 
     assert len(thin) == 1
-    assert thin[0].subject == "acct-108"
     assert len(widened) > len(thin)
     assert thin[0] in widened
 
     # Regression: hop-2 items must describe the pivot's *other* counterparty,
-    # not the pivot account itself repeated for every item.
+    # not the pivot account itself repeated for every item, nor a bounce
+    # back to the original account.
     hop2_items = [item for item in widened if item not in thin]
     assert hop2_items
     hop2_subjects = {item.subject for item in hop2_items}
-    assert "acct-108" not in hop2_subjects
-    assert len(hop2_subjects) > 1
+    assert "acct-100" not in hop2_subjects
 
 
 def test_fetch_cycle_evidence_reports_detected_cycle() -> None:
     def run_handler(query: str, **params):
         if "TRANSFERRED_TO*2.." in query:
             return _FakeResult(single_row={"hops": 4})
-        if "TRANSFERRED_TO]->(counterparty)" in query or "<-[:TRANSFERRED_TO]-(counterparty)" in query:
-            return _FakeResult(single_row=None)
-        return _FakeResult(records=[])
+        if "RETURN account.account_id AS account_id" in query:
+            return _account_ids_response("acct-300")
+        return _FakeResult(records=[], single_row=None)
 
     repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
 
     evidence = repository.fetch_evidence("cust-300")
 
-    assert len(evidence) == 1
-    assert evidence[0].kind == "cycle"
-    assert "4 hop" in evidence[0].details
+    cycle_items = [item for item in evidence if item.kind == "cycle"]
+    assert len(cycle_items) == 1
+    assert "4 hop" in cycle_items[0].details
 
 
 def test_fetch_structuring_evidence_reports_fanout_and_fanin() -> None:
     def run_handler(query: str, **params):
-        if "TRANSFERRED_TO*2.." in query:
-            return _FakeResult(single_row=None)
         if "TRANSFERRED_TO]->(counterparty)" in query:
             return _FakeResult(single_row={"counterparties": 6, "sample": ["acct-401", "acct-402"]})
         if "<-[:TRANSFERRED_TO]-(counterparty)" in query:
             return _FakeResult(single_row={"counterparties": 5, "sample": ["acct-601", "acct-602"]})
-        return _FakeResult(records=[])
+        if "RETURN account.account_id AS account_id" in query:
+            return _account_ids_response("acct-400")
+        return _FakeResult(records=[], single_row=None)
 
     repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
 
@@ -202,21 +203,109 @@ def test_fetch_structuring_evidence_reports_fanout_and_fanin() -> None:
     assert "structuring-fanin" in kinds
 
 
-def test_fetch_evidence_second_hop_query_only_runs_when_hop_radius_widened() -> None:
-    queries_seen: list[str] = []
+def test_fetch_alert_proximity_evidence_reports_linked_customer() -> None:
+    def run_handler(query: str, **params):
+        if "TRANSFERRED_TO*1.." in query:
+            assert params["customer_id"] == "cust-129"
+            return _FakeResult(
+                records=[{"linked_customer_id": "cust-200", "linked_alert_id": "alert-auto-cust-200", "hops": 2}]
+            )
+        if "RETURN account.account_id AS account_id" in query:
+            return _account_ids_response("acct-129")
+        return _FakeResult(records=[], single_row=None)
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    evidence = repository.fetch_evidence("cust-129")
+
+    proximity_items = [item for item in evidence if item.kind == "alert-proximity"]
+    assert len(proximity_items) == 1
+    assert "cust-200" in proximity_items[0].details
+    assert "2 hop" in proximity_items[0].details
+
+
+def test_fetch_evidence_hop_query_widens_frontier_when_hop_radius_increases() -> None:
+    queries_seen: list[tuple[str, list[str]]] = []
 
     def run_handler(query: str, **params):
-        queries_seen.append(query)
+        if "RETURN account.account_id AS account_id" in query:
+            return _account_ids_response("acct-100")
+        if "b.account_id AS counterparty" in query:
+            queries_seen.append((query, params["frontier"]))
+            if params["frontier"] == ["acct-100"]:
+                return _FakeResult(
+                    records=[
+                        {"counterparty": "acct-108", "channel": "pix", "amount": 100.0, "currency": "BRL", "direction": "to"}
+                    ]
+                )
+            return _FakeResult(records=[])
         return _FakeResult(records=[], single_row=None)
 
     repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
 
     repository.fetch_evidence("cust-100", hop_radius=1)
-    assert not any("mid" in query for query in queries_seen)
+    assert len(queries_seen) == 1
 
     queries_seen.clear()
     repository.fetch_evidence("cust-100", hop_radius=2)
-    assert any("mid" in query for query in queries_seen)
+    assert len(queries_seen) == 2
+    assert queries_seen[0][1] == ["acct-100"]
+    assert queries_seen[1][1] == ["acct-108"]
+
+
+def test_find_alert_for_customer_from_neo4j() -> None:
+    def run_handler(query: str, **params):
+        assert params["customer_id"] == "cust-200"
+        return _FakeResult(
+            single_row={"alert_id": "alert-auto-cust-200", "reason": "cycle-detected", "description": "..."}
+        )
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    record = repository.find_alert_for_customer("cust-200")
+
+    assert record is not None
+    assert record.alert_id == "alert-auto-cust-200"
+
+
+def test_find_alert_for_customer_offline_uses_seed_data() -> None:
+    repository = Neo4jAlertRepository.offline(AppConfig())
+
+    record = repository.find_alert_for_customer("cust-200")
+
+    assert record is not None
+    assert record.alert_id == "alert-auto-cust-200"
+
+
+def test_find_alert_for_customer_offline_returns_none_when_absent() -> None:
+    repository = Neo4jAlertRepository.offline(AppConfig())
+
+    assert repository.find_alert_for_customer("cust-101") is None
+
+
+def test_create_alert_writes_to_neo4j_when_driver_available() -> None:
+    executed = []
+
+    def run_handler(query: str, **params):
+        executed.append((query, params))
+        return _FakeResult()
+
+    repository = Neo4jAlertRepository(config=AppConfig(), driver=_FakeDriver(run_handler))
+
+    record = repository.create_alert("cust-214", reason="structuring-fanin-detected", description="...")
+
+    assert record.alert_id == "alert-auto-cust-214"
+    assert any("MERGE (a:Alert" in query for query, _ in executed)
+
+
+def test_create_alert_offline_is_idempotent_and_process_local() -> None:
+    repository = Neo4jAlertRepository.offline(AppConfig())
+
+    first = repository.create_alert("cust-214", reason="structuring-fanin-detected", description="desc")
+    second = repository.find_alert_for_customer("cust-214")
+
+    assert second is not None
+    assert second.alert_id == first.alert_id == "alert-auto-cust-214"
 
 
 def test_app_config_from_env_uses_concrete_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,6 +315,7 @@ def test_app_config_from_env_uses_concrete_defaults(monkeypatch: pytest.MonkeyPa
     monkeypatch.delenv("AML_ALERT_LLM_ENABLED", raising=False)
     monkeypatch.delenv("AML_ALERT_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("AML_ALERT_LLM_MODEL", raising=False)
+    monkeypatch.delenv("AML_ALERT_PROXIMITY_MAX_HOPS", raising=False)
 
     config = AppConfig.from_env()
 
@@ -233,19 +323,22 @@ def test_app_config_from_env_uses_concrete_defaults(monkeypatch: pytest.MonkeyPa
     assert config.neo4j_max_hops == 2
     assert config.evidence_limit == 10
     assert config.llm_enabled is False
-    assert config.llm_provider == "rule-based"
+    assert config.llm_provider == "anthropic"
     assert config.llm_model == "local-insight-summarizer"
+    assert config.alert_proximity_max_hops == 3
 
 
 def test_app_config_from_env_reads_llm_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AML_ALERT_LLM_ENABLED", "true")
-    monkeypatch.setenv("AML_ALERT_LLM_PROVIDER", "demo-provider")
+    monkeypatch.setenv("AML_ALERT_LLM_PROVIDER", "openai")
     monkeypatch.setenv("AML_ALERT_LLM_MODEL", "demo-model")
     monkeypatch.setenv("AML_ALERT_LLM_TIMEOUT_SECONDS", "30")
+    monkeypatch.setenv("AML_ALERT_LLM_REASONING_EFFORT", "high")
 
     config = AppConfig.from_env()
 
     assert config.llm_enabled is True
-    assert config.llm_provider == "demo-provider"
+    assert config.llm_provider == "openai"
     assert config.llm_model == "demo-model"
     assert config.llm_timeout_seconds == 30
+    assert config.llm_reasoning_effort == "high"

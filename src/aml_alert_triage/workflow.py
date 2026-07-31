@@ -6,41 +6,37 @@ import logging
 
 from .config import AppConfig
 from .llm import LLMAdapter, InsightRequest, compose_insight_prompt
-from .models import AlertPayload, InsightResult, RiskAssessment, TriageRecommendation, TriageState
+from .models import AlertOutcome, InsightResult, RiskAssessment, TriageRecommendation, TriageState, HIGH_RISK_EVIDENCE_KINDS
 from .repository import Neo4jAlertRepository, summarize_evidence
+from .snapshot_store import AlertSnapshot, AlertSnapshotStore
 
 logger = logging.getLogger(__name__)
 
-# Evidence kinds that repository.py's cycle/structuring detection queries can
-# produce. Their mere presence is treated as a high-risk structural signal,
-# regardless of how many "ordinary" evidence items were also found.
-HIGH_RISK_EVIDENCE_KINDS = {"cycle", "structuring-fanout", "structuring-fanin"}
 
-
-def initialize_state(alert: AlertPayload, user_prompt: str = "") -> TriageState:
+def initialize_state(customer_id: str, user_prompt: str = "") -> TriageState:
     state = TriageState(
-        alert=alert,
+        customer_id=customer_id,
         user_prompt=user_prompt,
         investigation_status="initialized",
         workflow_steps=["initialized"],
         metadata={
-            "alert_id": alert.alert_id,
-            "customer_id": alert.customer_id,
+            "customer_id": customer_id,
             "user_prompt": user_prompt,
         },
     )
-    logger.info("Initialized triage state for alert %s", alert.alert_id)
+    logger.info("Initialized triage state for customer %s", customer_id)
     return state
 
 
 def enrich_state(state: TriageState, repository: Neo4jAlertRepository) -> TriageState:
-    evidence = repository.fetch_connected_context(state.alert.customer_id, hop_radius=state.hop_radius)
+    evidence = repository.fetch_connected_context(state.customer_id, hop_radius=state.hop_radius)
     evidence_summary = summarize_evidence(evidence) if evidence else "No connected evidence was found in Neo4j."
     next_status = "enriched" if evidence else "enriched-without-graph-evidence"
+    existing_alert = repository.find_alert_for_customer(state.customer_id)
     logger.info(
         "Loaded %s evidence items for customer %s at hop radius %s",
         len(evidence),
-        state.alert.customer_id,
+        state.customer_id,
         state.hop_radius,
     )
     return replace(
@@ -49,6 +45,7 @@ def enrich_state(state: TriageState, repository: Neo4jAlertRepository) -> Triage
         evidence_summary=evidence_summary,
         investigation_status=next_status,
         enrichment_attempts=state.enrichment_attempts + 1,
+        existing_alert=existing_alert,
         workflow_steps=[*state.workflow_steps, f"enriched-hop-{state.hop_radius}"],
     )
 
@@ -79,7 +76,8 @@ def widen_search(state: TriageState) -> TriageState:
 
 def generate_insights(state: TriageState, llm_adapter: LLMAdapter) -> TriageState:
     request = InsightRequest(
-        alert=state.alert,
+        customer_id=state.customer_id,
+        existing_alert=state.existing_alert,
         user_prompt=state.user_prompt,
         evidence=list(state.evidence),
         evidence_summary=state.evidence_summary,
@@ -93,6 +91,8 @@ def generate_insights(state: TriageState, llm_adapter: LLMAdapter) -> TriageStat
             summary=insight_response.summary,
             key_observations=insight_response.key_observations,
             error=None,
+            recommend_alert=insight_response.recommend_alert,
+            alert_reason=insight_response.alert_reason,
         )
         step = "insights-generated"
     except Exception as exc:
@@ -101,10 +101,12 @@ def generate_insights(state: TriageState, llm_adapter: LLMAdapter) -> TriageStat
             summary="No LLM insights are available. Continue with evidence-only triage guidance.",
             key_observations=["LLM insights are unavailable for this run."],
             error=str(exc),
+            recommend_alert=False,
+            alert_reason="",
         )
         step = "insights-fallback"
 
-    logger.info("Processed insight stage for alert %s with status %s", state.alert.alert_id, insights.status)
+    logger.info("Processed insight stage for customer %s with status %s", state.customer_id, insights.status)
     return replace(
         state,
         insights=insights,
@@ -117,14 +119,81 @@ def generate_insights(state: TriageState, llm_adapter: LLMAdapter) -> TriageStat
     )
 
 
+def _insight_mode(config: AppConfig) -> str:
+    return "static" if not config.llm_enabled else config.llm_provider
+
+
+def register_alert(
+    state: TriageState,
+    repository: Neo4jAlertRepository,
+    config: AppConfig,
+    snapshot_store: AlertSnapshotStore | None = None,
+) -> TriageState:
+    """Idempotent alert write-back: if the customer already has an alert,
+    report it unchanged; otherwise create one only when insight generation
+    (static or real LLM, whichever ran) recommended it. This is
+    deliberately independent of `assess_risk`'s structural risk level - it
+    reacts to the insight's own grounded judgment, not the cycle/structuring
+    classification (see design.md for why the two signals stay separate).
+
+    On a newly-created alert, also persists an immutable evidence/insight
+    snapshot (best-effort - a snapshot failure never breaks the
+    investigation, only later report generation for that alert)."""
+    if state.existing_alert is not None:
+        outcome = AlertOutcome(
+            action="existing", alert_id=state.existing_alert.alert_id, reason=state.existing_alert.reason
+        )
+        step = "alert-existing"
+    elif state.insights.recommend_alert:
+        record = repository.create_alert(
+            state.customer_id,
+            reason=state.insights.alert_reason or "Insight generation recommended an alert.",
+            description=state.insights.summary,
+        )
+        outcome = AlertOutcome(action="created", alert_id=record.alert_id, reason=record.reason)
+        step = "alert-created"
+
+        if snapshot_store is not None:
+            try:
+                # register_alert runs before assess_risk in the pipeline
+                # (the alert-creation decision is independent of risk.level -
+                # see design.md), so state.risk isn't populated yet here;
+                # compute it locally, purely for the snapshot, without
+                # changing the actual node ordering.
+                snapshot_risk = assess_risk(state).risk
+                snapshot_store.save_snapshot(
+                    AlertSnapshot(
+                        alert_id=record.alert_id,
+                        customer_id=state.customer_id,
+                        reason=record.reason,
+                        description=record.description,
+                        evidence=list(state.evidence),
+                        risk=snapshot_risk,
+                        insight_mode=_insight_mode(config),
+                        insight_summary=state.insights.summary,
+                        insight_key_observations=list(state.insights.key_observations),
+                        alert_reason=state.insights.alert_reason,
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Failed to persist alert snapshot for %s: %s", record.alert_id, exc)
+    else:
+        outcome = AlertOutcome(action="none")
+        step = "alert-not-required"
+
+    logger.info("Alert outcome for customer %s: %s", state.customer_id, outcome.action)
+    return replace(state, alert_outcome=outcome, workflow_steps=[*state.workflow_steps, step])
+
+
 def assess_risk(state: TriageState) -> TriageState:
     """Classify the retrieved evidence into an AML risk level.
 
-    A "cycle" or "structuring-fanout"/"structuring-fanin" evidence item -
-    both produced by dedicated Cypher graph-pattern queries in
-    repository.py - is treated as high risk regardless of how much other
-    evidence is present, since those patterns are specific laundering
-    typologies rather than general connectedness.
+    A "cycle", "structuring-fanout"/"structuring-fanin", or
+    "alert-proximity" evidence item - all produced by dedicated Cypher
+    graph-pattern queries in repository.py - is treated as high risk
+    regardless of how much other evidence is present, since those are
+    specific laundering typologies (or association with an already-flagged
+    customer) rather than general connectedness.
     """
     typologies = sorted({item.kind for item in state.evidence if item.kind in HIGH_RISK_EVIDENCE_KINDS})
 
@@ -139,7 +208,7 @@ def assess_risk(state: TriageState) -> TriageState:
         rationale = "No connected evidence was found after exhausting the enrichment retry budget."
 
     risk = RiskAssessment(level=level, rationale=rationale, typologies=typologies)
-    logger.info("Assessed risk level %s for alert %s", level, state.alert.alert_id)
+    logger.info("Assessed risk level %s for customer %s", level, state.customer_id)
     return replace(
         state,
         risk=risk,
@@ -151,8 +220,7 @@ def assess_risk(state: TriageState) -> TriageState:
 def build_human_review_payload(state: TriageState) -> dict[str, Any]:
     return {
         "reason": "High-risk AML structural pattern detected; analyst confirmation is required.",
-        "alert_id": state.alert.alert_id,
-        "customer_id": state.alert.customer_id,
+        "customer_id": state.customer_id,
         "risk_level": state.risk.level,
         "typologies": list(state.risk.typologies),
         "evidence_summary": state.evidence_summary,
@@ -208,7 +276,7 @@ def review_evidence(state: TriageState) -> TriageRecommendation:
         rationale=" ".join(rationale.split()),
         supporting_evidence=list(state.evidence),
     )
-    logger.info("Generated recommendation %s for alert %s", disposition, state.alert.alert_id)
+    logger.info("Generated recommendation %s for customer %s", disposition, state.customer_id)
     return recommendation
 
 
@@ -237,7 +305,7 @@ def state_from_mapping(mapping: dict[str, Any]) -> TriageState:
 
 def build_triage_response(state: TriageState) -> dict[str, Any]:
     return {
-        "alert_id": state.alert.alert_id,
+        "customer_id": state.customer_id,
         "status": state.investigation_status,
         "workflow_steps": list(state.workflow_steps),
         "disposition": state.recommendation.disposition if state.recommendation else None,
@@ -258,11 +326,22 @@ def build_triage_response(state: TriageState) -> dict[str, Any]:
             "summary": state.insights.summary,
             "key_observations": list(state.insights.key_observations),
             "error": state.insights.error,
+            "recommend_alert": state.insights.recommend_alert,
+        },
+        "alert": {
+            "action": state.alert_outcome.action,
+            "alert_id": state.alert_outcome.alert_id,
+            "reason": state.alert_outcome.reason,
         },
     }
 
 
-def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, config: AppConfig):
+def build_langgraph(
+    repository: Neo4jAlertRepository,
+    llm_adapter: LLMAdapter,
+    config: AppConfig,
+    snapshot_store: AlertSnapshotStore | None = None,
+):
     """Compile the AML triage workflow as a LangGraph `StateGraph`.
 
     Unlike the linear `run_triage` function, this graph has real branching
@@ -272,7 +351,7 @@ def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, c
       retrieval with a wider Neo4j hop radius when nothing is found;
     - a conditional edge after risk assessment that only routes through
       `human_review` for high-risk structural patterns (cycles, fan-out/
-      fan-in structuring);
+      fan-in structuring, or proximity to an already-alerted customer);
     - a real pause/resume interrupt in `human_review`, backed by a
       checkpointer, so a high-risk triage run can stop and wait for an
       analyst decision instead of guessing or blocking a thread.
@@ -287,7 +366,7 @@ def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, c
     graph = StateGraph(TriageState)
 
     def node_initialize(state: TriageState) -> TriageState:
-        return initialize_state(state.alert, state.user_prompt)
+        return initialize_state(state.customer_id, state.user_prompt)
 
     def node_enrich(state: TriageState) -> TriageState:
         return enrich_state(state, repository)
@@ -297,6 +376,9 @@ def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, c
 
     def node_insights(state: TriageState) -> TriageState:
         return generate_insights(state, llm_adapter)
+
+    def node_register_alert(state: TriageState) -> TriageState:
+        return register_alert(state, repository, config, snapshot_store)
 
     def node_assess_risk(state: TriageState) -> TriageState:
         return assess_risk(state)
@@ -319,6 +401,7 @@ def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, c
     graph.add_node("enrich", node_enrich)
     graph.add_node("widen_search", node_widen_search)
     graph.add_node("insights", node_insights)
+    graph.add_node("register_alert", node_register_alert)
     graph.add_node("assess_risk", node_assess_risk)
     graph.add_node("human_review", node_human_review)
     graph.add_node("review", node_review)
@@ -331,7 +414,8 @@ def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, c
         {"widen_search": "widen_search", "insights": "insights"},
     )
     graph.add_edge("widen_search", "enrich")
-    graph.add_edge("insights", "assess_risk")
+    graph.add_edge("insights", "register_alert")
+    graph.add_edge("register_alert", "assess_risk")
     graph.add_conditional_edges(
         "assess_risk",
         route_after_risk,
@@ -344,12 +428,13 @@ def build_langgraph(repository: Neo4jAlertRepository, llm_adapter: LLMAdapter, c
 
 
 def run_triage(
-    alert: AlertPayload,
+    customer_id: str,
     repository: Neo4jAlertRepository,
     llm_adapter: LLMAdapter,
     config: AppConfig,
     user_prompt: str = "",
     human_review_callback: Callable[[TriageState], str] | None = None,
+    snapshot_store: AlertSnapshotStore | None = None,
 ) -> TriageState:
     """Run the same workflow as `build_langgraph`, but as a plain call chain.
 
@@ -361,7 +446,7 @@ def run_triage(
     checkpointed graph can. Without a callback, high-risk alerts are left
     with an explicit "pending-manual-review" decision rather than guessing.
     """
-    state = initialize_state(alert, user_prompt=user_prompt)
+    state = initialize_state(customer_id, user_prompt=user_prompt)
 
     state = enrich_state(state, repository)
     while should_widen_search(state, config):
@@ -369,6 +454,7 @@ def run_triage(
         state = enrich_state(state, repository)
 
     state = generate_insights(state, llm_adapter)
+    state = register_alert(state, repository, config, snapshot_store)
     state = assess_risk(state)
 
     if state.requires_human_review:

@@ -1,0 +1,114 @@
+[
+  {
+    "alert_id": "alert-auto-cust-200",
+    "customer_id": "cust-200",
+    "reason": "cycle-detected",
+    "description": "Directed fund-transfer cycle detected returning to the originating account after periodic monitoring flagged unusual round-trip activity.",
+    "evidence": [
+      {
+        "kind": "ted",
+        "subject": "acct-200-c200h1",
+        "details": "TED transfer of 11111.20 BRL to acct-200-c200h1.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "ted",
+        "subject": "acct-200-c200h2",
+        "details": "TED transfer of 10882.39 BRL from acct-200-c200h2.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "ted",
+        "subject": "acct-proximity-bridge",
+        "details": "TED transfer of 4150.00 BRL from acct-proximity-bridge.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "ted",
+        "subject": "acct-129",
+        "details": "TED transfer of 4200.00 BRL to acct-129.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "cycle",
+        "subject": "acct-200",
+        "details": "Detected a directed fund-transfer cycle spanning 3 hop(s) that returns to the originating account.",
+        "source": "neo4j"
+      }
+    ],
+    "risk": {
+      "level": "high",
+      "rationale": "Structural graph pattern(s) detected: cycle.",
+      "typologies": [
+        "cycle"
+      ]
+    },
+    "insight_mode": "static",
+    "insight_summary": "Evidence indicates connected activity for customer cust-200; analyst review should prioritize linked parties and repeated transactions.",
+    "insight_key_observations": [
+      "Analyzed 5 related evidence item(s).",
+      "Top evidence summary: TED transfer of 11111.20 BRL to acct-200-c200h1.; TED transfer of 10882.39 BRL from acct-200-c200h2.; TED transfer of 4150.00 BRL from acct-proximity-bridge.; TED transfer of 4200.00 BRL to acct-129.; Detected a directed fund-transfer cycle spanning 3 hop(s) that returns to the originating account."
+    ],
+    "alert_reason": "Structural pattern(s) detected: cycle.",
+    "created_at": "2026-07-30T00:00:00+00:00"
+  },
+  {
+    "alert_id": "alert-auto-cust-207",
+    "customer_id": "cust-207",
+    "reason": "structuring-fanout-detected",
+    "description": "Multiple distinct outgoing transfers just under a reporting threshold, consistent with structuring/pulverization.",
+    "evidence": [
+      {
+        "kind": "pix",
+        "subject": "acct-207-c207b1",
+        "details": "PIX transfer of 939.42 BRL to acct-207-c207b1.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "pix",
+        "subject": "acct-207-c207b2",
+        "details": "PIX transfer of 936.90 BRL to acct-207-c207b2.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "pix",
+        "subject": "acct-207-c207b3",
+        "details": "PIX transfer of 927.88 BRL to acct-207-c207b3.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "pix",
+        "subject": "acct-207-c207b4",
+        "details": "PIX transfer of 932.29 BRL to acct-207-c207b4.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "pix",
+        "subject": "acct-207-c207b5",
+        "details": "PIX transfer of 926.98 BRL to acct-207-c207b5.",
+        "source": "neo4j"
+      },
+      {
+        "kind": "structuring-fanout",
+        "subject": "acct-207",
+        "details": "Detected 5 distinct outgoing transfers (possible structuring/pulverization); sample beneficiaries: ['acct-207-c207b1', 'acct-207-c207b2', 'acct-207-c207b3', 'acct-207-c207b4', 'acct-207-c207b5'].",
+        "source": "neo4j"
+      }
+    ],
+    "risk": {
+      "level": "high",
+      "rationale": "Structural graph pattern(s) detected: structuring-fanout.",
+      "typologies": [
+        "structuring-fanout"
+      ]
+    },
+    "insight_mode": "static",
+    "insight_summary": "Evidence indicates connected activity for customer cust-207; analyst review should prioritize linked parties and repeated transactions.",
+    "insight_key_observations": [
+      "Analyzed 6 related evidence item(s).",
+      "Top evidence summary: PIX transfer of 939.42 BRL to acct-207-c207b1.; PIX transfer of 936.90 BRL to acct-207-c207b2.; PIX transfer of 927.88 BRL to acct-207-c207b3.; PIX transfer of 932.29 BRL to acct-207-c207b4.; PIX transfer of 926.98 BRL to acct-207-c207b5.; Detected 5 distinct outgoing transfers (possible structuring/pulverization); sample beneficiaries: ['acct-207-c207b1', 'acct-207-c207b2', 'acct-207-c207b3', 'acct-207-c207b4', 'acct-207-c207b5']."
+    ],
+    "alert_reason": "Structural pattern(s) detected: structuring-fanout.",
+    "created_at": "2026-07-30T00:00:00+00:00"
+  }
+]

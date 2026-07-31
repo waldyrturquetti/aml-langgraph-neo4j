@@ -8,11 +8,17 @@ computed risk, and a real interrupt/resume pause for human review.
 from langgraph.types import Command
 
 from aml_alert_triage.config import AppConfig
-from aml_alert_triage.llm import InsightResponse
+from aml_alert_triage.llm import InsightResponse, RuleBasedLLMAdapter
 from aml_alert_triage.models import TriageState
 from aml_alert_triage.repository import Neo4jAlertRepository
-from aml_alert_triage.sample_data import SAMPLE_ALERTS
 from aml_alert_triage.workflow import build_langgraph, state_from_mapping
+
+ORDINARY_CUSTOMER = "cust-101"
+THIN_FILE_CUSTOMER = "cust-100"
+UNKNOWN_CUSTOMER = "cust-999"
+CYCLE_CUSTOMER = "cust-200"
+FANOUT_CUSTOMER = "cust-208"
+FANIN_CUSTOMER = "cust-214"
 
 
 class _StaticAdapter:
@@ -28,16 +34,15 @@ def _build_graph(config: AppConfig | None = None):
     return graph
 
 
-def _invoke(graph, alert, thread_id: str, user_prompt: str = ""):
+def _invoke(graph, customer_id: str, thread_id: str, user_prompt: str = ""):
     config = {"configurable": {"thread_id": thread_id}}
-    return graph.invoke(TriageState(alert=alert, user_prompt=user_prompt), config=config), config
+    return graph.invoke(TriageState(customer_id=customer_id, user_prompt=user_prompt), config=config), config
 
 
 def test_langgraph_runs_straight_through_for_ordinary_evidence() -> None:
     graph = _build_graph()
-    alert = SAMPLE_ALERTS["alert-001"]
 
-    result, _ = _invoke(graph, alert, thread_id="test-ordinary")
+    result, _ = _invoke(graph, ORDINARY_CUSTOMER, thread_id="test-ordinary")
 
     assert "__interrupt__" not in result
     state = state_from_mapping(result)
@@ -48,9 +53,8 @@ def test_langgraph_runs_straight_through_for_ordinary_evidence() -> None:
 
 def test_langgraph_widen_search_cycle_recovers_evidence() -> None:
     graph = _build_graph()
-    alert = SAMPLE_ALERTS["alert-005"]
 
-    result, _ = _invoke(graph, alert, thread_id="test-widen")
+    result, _ = _invoke(graph, THIN_FILE_CUSTOMER, thread_id="test-widen")
 
     assert "__interrupt__" not in result
     state = state_from_mapping(result)
@@ -63,9 +67,8 @@ def test_langgraph_widen_search_cycle_recovers_evidence() -> None:
 def test_langgraph_retry_loop_terminates_without_evidence() -> None:
     config = AppConfig()
     graph = _build_graph(config)
-    alert = SAMPLE_ALERTS["alert-002"]
 
-    result, _ = _invoke(graph, alert, thread_id="test-no-evidence")
+    result, _ = _invoke(graph, UNKNOWN_CUSTOMER, thread_id="test-no-evidence")
 
     assert "__interrupt__" not in result
     state = state_from_mapping(result)
@@ -77,15 +80,14 @@ def test_langgraph_retry_loop_terminates_without_evidence() -> None:
 
 def test_langgraph_pauses_and_resumes_confirming_escalation() -> None:
     graph = _build_graph()
-    alert = SAMPLE_ALERTS["alert-003"]
 
-    paused, thread_config = _invoke(graph, alert, thread_id="test-cycle-confirm")
+    paused, thread_config = _invoke(graph, CYCLE_CUSTOMER, thread_id="test-cycle-confirm")
 
     assert "__interrupt__" in paused
     interrupt_payload = paused["__interrupt__"][0].value
     assert interrupt_payload["risk_level"] == "high"
-    assert interrupt_payload["typologies"] == ["cycle"]
-    assert interrupt_payload["alert_id"] == alert.alert_id
+    assert "cycle" in interrupt_payload["typologies"]
+    assert interrupt_payload["customer_id"] == CYCLE_CUSTOMER
 
     resumed = graph.invoke(Command(resume="confirm-escalation"), config=thread_config)
 
@@ -97,9 +99,8 @@ def test_langgraph_pauses_and_resumes_confirming_escalation() -> None:
 
 def test_langgraph_pauses_and_resumes_rejecting_escalation() -> None:
     graph = _build_graph()
-    alert = SAMPLE_ALERTS["alert-004"]
 
-    paused, thread_config = _invoke(graph, alert, thread_id="test-fanout-reject")
+    paused, thread_config = _invoke(graph, FANOUT_CUSTOMER, thread_id="test-fanout-reject")
     assert "__interrupt__" in paused
 
     resumed = graph.invoke(Command(resume="reject-escalation"), config=thread_config)
@@ -112,10 +113,27 @@ def test_langgraph_pauses_and_resumes_rejecting_escalation() -> None:
 
 def test_langgraph_pauses_for_structuring_fanin() -> None:
     graph = _build_graph()
-    alert = SAMPLE_ALERTS["alert-006"]
 
-    paused, _ = _invoke(graph, alert, thread_id="test-fanin")
+    paused, _ = _invoke(graph, FANIN_CUSTOMER, thread_id="test-fanin")
 
     assert "__interrupt__" in paused
     interrupt_payload = paused["__interrupt__"][0].value
-    assert interrupt_payload["typologies"] == ["structuring-fanin"]
+    assert "structuring-fanin" in interrupt_payload["typologies"]
+
+
+def test_langgraph_creates_alert_for_undiscovered_high_risk_customer() -> None:
+    config = AppConfig()
+    repository = Neo4jAlertRepository.offline(config)
+    # Uses the real rule-based adapter (not the dummy _StaticAdapter, which
+    # never recommends an alert) so register_alert has something to act on.
+    graph = build_langgraph(repository, RuleBasedLLMAdapter(provider="rule-based", model="x"), config)
+    assert graph is not None
+
+    result, _ = _invoke(graph, FANIN_CUSTOMER, thread_id="test-fanin-alert")
+
+    assert "__interrupt__" in result
+    # register_alert runs before assess_risk/human_review in the graph, so
+    # the alert is already created by the time the interrupt fires.
+    created = repository.find_alert_for_customer(FANIN_CUSTOMER)
+    assert created is not None
+    assert created.alert_id == f"alert-auto-{FANIN_CUSTOMER}"

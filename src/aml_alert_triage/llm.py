@@ -5,23 +5,28 @@ import json
 from typing import Protocol
 
 from .config import AppConfig
-from .models import AlertPayload, EvidenceItem
+from .models import AlertRecord, HIGH_RISK_EVIDENCE_KINDS, EvidenceItem
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_OPENAI_MODEL = "gpt-5"
+DEFAULT_REASONING_EFFORT = "medium"
 
 
 @dataclass(slots=True)
 class InsightRequest:
-    alert: AlertPayload
+    customer_id: str
     user_prompt: str
     evidence: list[EvidenceItem]
     evidence_summary: str
+    existing_alert: AlertRecord | None = None
 
 
 @dataclass(slots=True)
 class InsightResponse:
     summary: str
     key_observations: list[str]
+    recommend_alert: bool = False
+    alert_reason: str = ""
 
 
 class LLMAdapter(Protocol):
@@ -29,20 +34,25 @@ class LLMAdapter(Protocol):
         """Generate normalized insights from triage context."""
 
 
-class DisabledLLMAdapter:
-    def generate_insights(self, request: InsightRequest) -> InsightResponse:
-        raise RuntimeError("LLM generation is disabled by configuration.")
-
-
 @dataclass(slots=True)
 class RuleBasedLLMAdapter:
+    """Deterministic, offline "static" insight adapter - no network call.
+
+    Used whenever AML_ALERT_LLM_ENABLED=false. Its alert recommendation
+    directly mirrors the same structural signal `workflow.assess_risk`
+    uses (HIGH_RISK_EVIDENCE_KINDS membership), since a template has no
+    reasoning of its own to add beyond what the graph queries already found.
+    """
+
     provider: str
     model: str
 
     def generate_insights(self, request: InsightRequest) -> InsightResponse:
+        high_risk_items = [item for item in request.evidence if item.kind in HIGH_RISK_EVIDENCE_KINDS]
+
         if request.evidence:
             summary = (
-                f"Evidence indicates connected activity for customer {request.alert.customer_id}; "
+                f"Evidence indicates connected activity for customer {request.customer_id}; "
                 "analyst review should prioritize linked parties and repeated transactions."
             )
             observations = [
@@ -51,7 +61,7 @@ class RuleBasedLLMAdapter:
             ]
         else:
             summary = (
-                f"No connected graph evidence was found for customer {request.alert.customer_id}; "
+                f"No connected graph evidence was found for customer {request.customer_id}; "
                 "continue monitoring and collect additional context before escalation."
             )
             observations = [
@@ -62,7 +72,19 @@ class RuleBasedLLMAdapter:
         if request.user_prompt:
             observations.append(f"User prompt focus: {request.user_prompt}")
 
-        return InsightResponse(summary=summary, key_observations=observations)
+        recommend_alert = bool(high_risk_items)
+        alert_reason = (
+            "Structural pattern(s) detected: " + ", ".join(sorted({item.kind for item in high_risk_items})) + "."
+            if recommend_alert
+            else ""
+        )
+
+        return InsightResponse(
+            summary=summary,
+            key_observations=observations,
+            recommend_alert=recommend_alert,
+            alert_reason=alert_reason,
+        )
 
 
 INSIGHT_RESPONSE_SCHEMA = {
@@ -73,16 +95,25 @@ INSIGHT_RESPONSE_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
         },
+        "recommend_alert": {"type": "boolean"},
+        "alert_reason": {"type": "string"},
     },
-    "required": ["summary", "key_observations"],
+    "required": ["summary", "key_observations", "recommend_alert", "alert_reason"],
     "additionalProperties": False,
 }
 
 ANTHROPIC_SYSTEM_PROMPT = (
     "You are an AML learning assistant reviewing fictional data only. "
     "Use only the evidence supplied in the request, never invent facts, and "
-    "respond with concise, evidence-grounded insights."
+    "respond with concise, evidence-grounded insights. "
+    "Only set recommend_alert to true when the supplied evidence shows a concrete "
+    "suspicious pattern (e.g. a transfer cycle, structuring, or proximity to an "
+    "already-alerted customer); never recommend an alert from absence of evidence "
+    "or speculation. When recommend_alert is true, alert_reason must briefly cite "
+    "the specific evidence that justifies it."
 )
+
+OPENAI_SYSTEM_PROMPT = ANTHROPIC_SYSTEM_PROMPT
 
 
 @dataclass(slots=True)
@@ -132,6 +163,76 @@ class AnthropicLLMAdapter:
         return InsightResponse(
             summary=str(payload["summary"]),
             key_observations=[str(item) for item in payload["key_observations"]],
+            recommend_alert=bool(payload.get("recommend_alert", False)),
+            alert_reason=str(payload.get("alert_reason", "")),
+        )
+
+
+@dataclass(slots=True)
+class OpenAILLMAdapter:
+    """LLM adapter backed by the OpenAI Chat Completions API.
+
+    A client can be injected for testing; otherwise one is lazily created
+    from the `openai` package and standard OpenAI credential resolution
+    (e.g. the OPENAI_API_KEY environment variable). When `reasoning_effort`
+    is set, it is forwarded to the API so reasoning-capable models (e.g.
+    the `o` series or `gpt-5`) think before answering.
+    """
+
+    model: str = DEFAULT_OPENAI_MODEL
+    timeout_seconds: int = 15
+    max_tokens: int = 1024
+    reasoning_effort: str | None = None
+    client: object | None = None
+
+    def _get_client(self) -> object:
+        if self.client is not None:
+            return self.client
+
+        try:
+            import openai
+        except ImportError as exc:
+            raise RuntimeError(
+                "The 'openai' package is required for the openai LLM provider. "
+                "Install it with `pip install openai` (or `pip install -e .[llm]`)."
+            ) from exc
+
+        self.client = openai.OpenAI(timeout=self.timeout_seconds)
+        return self.client
+
+    def generate_insights(self, request: InsightRequest) -> InsightResponse:
+        client = self._get_client()
+        prompt = compose_insight_prompt(request)
+
+        kwargs: dict[str, object] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": OPENAI_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "max_completion_tokens": self.max_tokens,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "insight_response",
+                    "schema": INSIGHT_RESPONSE_SCHEMA,
+                    "strict": True,
+                },
+            },
+        }
+        if self.reasoning_effort:
+            kwargs["reasoning_effort"] = self.reasoning_effort
+
+        response = client.chat.completions.create(**kwargs)
+
+        text = response.choices[0].message.content
+        payload = json.loads(text)
+
+        return InsightResponse(
+            summary=str(payload["summary"]),
+            key_observations=[str(item) for item in payload["key_observations"]],
+            recommend_alert=bool(payload.get("recommend_alert", False)),
+            alert_reason=str(payload.get("alert_reason", "")),
         )
 
 
@@ -142,12 +243,21 @@ def compose_insight_prompt(request: InsightRequest) -> str:
     ]
     evidence_block = "\n".join(evidence_lines) if evidence_lines else "- no-related-evidence"
 
+    if request.existing_alert is not None:
+        existing_alert_line = (
+            f"Existing alert: {request.existing_alert.alert_id} (reason: {request.existing_alert.reason}) "
+            "already exists for this customer - do not recommend creating another one."
+        )
+    else:
+        existing_alert_line = "Existing alert: none on file for this customer."
+
     return (
         "You are an AML learning assistant. Use only the supplied fictional evidence. "
-        "Do not invent facts. Return concise insights and separate interpretation from facts.\n"
+        "Do not invent facts. Return concise insights, separate interpretation from facts, "
+        "and decide whether an alert should be recommended based solely on the evidence below.\n"
         f"User prompt: {request.user_prompt or 'General AML triage guidance'}\n"
-        f"Alert ID: {request.alert.alert_id}\n"
-        f"Customer ID: {request.alert.customer_id}\n"
+        f"Customer ID: {request.customer_id}\n"
+        f"{existing_alert_line}\n"
         f"Evidence summary: {request.evidence_summary}\n"
         f"Evidence items:\n{evidence_block}"
     )
@@ -155,10 +265,18 @@ def compose_insight_prompt(request: InsightRequest) -> str:
 
 def create_llm_adapter(config: AppConfig) -> LLMAdapter:
     if not config.llm_enabled:
-        return DisabledLLMAdapter()
+        return RuleBasedLLMAdapter(provider="rule-based", model=config.llm_model)
 
-    if config.llm_provider == "anthropic":
-        model = config.llm_model if config.llm_model != AppConfig().llm_model else DEFAULT_ANTHROPIC_MODEL
-        return AnthropicLLMAdapter(model=model, timeout_seconds=config.llm_timeout_seconds)
+    if config.llm_provider == "openai":
+        default_model_configured = config.llm_model == AppConfig().llm_model
+        model = DEFAULT_OPENAI_MODEL if default_model_configured else config.llm_model
+        reasoning_effort = config.llm_reasoning_effort or DEFAULT_REASONING_EFFORT
+        return OpenAILLMAdapter(
+            model=model,
+            timeout_seconds=config.llm_timeout_seconds,
+            reasoning_effort=reasoning_effort,
+        )
 
-    return RuleBasedLLMAdapter(provider=config.llm_provider, model=config.llm_model)
+    default_model_configured = config.llm_model == AppConfig().llm_model
+    model = DEFAULT_ANTHROPIC_MODEL if default_model_configured else config.llm_model
+    return AnthropicLLMAdapter(model=model, timeout_seconds=config.llm_timeout_seconds)

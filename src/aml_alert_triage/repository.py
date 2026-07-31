@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
+import logging
 
 from .config import AppConfig
-from .graph_dataset import DATASET
+from .graph_dataset import ALERTS, DATASET
 from .graph_engine import evidence_for_customer, format_transaction_details
-from .models import EvidenceItem
+from .models import AlertRecord, EvidenceItem
+
+logger = logging.getLogger(__name__)
 
 # Cypher variable-length patterns can't take a parameter for the hop bound,
-# so the configured cycle_max_hops is clamped to this range and interpolated
-# as a literal. It is an internal config value, never user input.
+# so the configured cycle_max_hops/alert_proximity_max_hops are clamped to
+# these ranges and interpolated as literals. Internal config values only,
+# never user input.
 _CYCLE_HOPS_RANGE = (2, 12)
+_PROXIMITY_HOPS_RANGE = (1, 12)
 
 
 def _split_cypher_statements(code: str) -> list[str]:
@@ -61,8 +66,14 @@ class Neo4jAlertRepository:
     config: AppConfig
     driver: object | None = None
     force_offline: bool = False
+    _offline_alerts: dict[str, AlertRecord] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
+        for seed in ALERTS:
+            self._offline_alerts[seed.customer_id] = AlertRecord(
+                alert_id=seed.alert_id, reason=seed.reason, description=seed.description
+            )
+
         if self.force_offline:
             self.driver = None
             return
@@ -113,6 +124,9 @@ class Neo4jAlertRepository:
             cycle_max_hops=self.config.cycle_max_hops,
             fanout_threshold=self.config.structuring_fanout_threshold,
             fanin_threshold=self.config.structuring_fanin_threshold,
+            alert_proximity_max_hops=self.config.alert_proximity_max_hops,
+            alerted_customer_ids=set(self._offline_alerts.keys()),
+            alert_ids_by_customer={cid: rec.alert_id for cid, rec in self._offline_alerts.items()},
         )
 
         if limit is not None:
@@ -124,61 +138,65 @@ class Neo4jAlertRepository:
     ) -> list[EvidenceItem]:
         query_limit = limit or self.config.evidence_limit
 
-        evidence = self._fetch_direct_evidence(customer_id, query_limit)
-        if hop_radius >= 2:
-            evidence.extend(self._fetch_second_hop_evidence(customer_id, query_limit))
+        evidence = self._fetch_hop_evidence(customer_id, hop_radius, query_limit)
 
         # Targeted typology queries: cheap, pattern-specific graph traversals
         # that run independently of the general-neighbor hop radius, since a
-        # laundering cycle or a fan-out/fan-in pattern is either present in
-        # the graph or it isn't.
+        # laundering cycle, a fan-out/fan-in pattern, or proximity to an
+        # already-alerted customer is either present in the graph or it isn't.
         evidence.extend(self._fetch_cycle_evidence(customer_id))
         evidence.extend(self._fetch_structuring_evidence(customer_id))
+        evidence.extend(self._fetch_alert_proximity_evidence(customer_id))
         return evidence
 
-    def _fetch_direct_evidence(self, customer_id: str, limit: int) -> list[EvidenceItem]:
-        # Rooted at the customer's own account(s) and only ever traverses
-        # TRANSFERRED_TO edges, so this never touches the administrative OWNS
-        # (customer->account) or TARGETS (alert->customer) edges in the first
-        # place - a customer with no external money movement genuinely
-        # produces empty evidence here, which is what drives the
-        # widen-search retry loop in workflow.py.
-        query = """
-        MATCH (customer {customer_id: $customer_id})-[:OWNS]->(account)-[relationship:TRANSFERRED_TO]-(related)
-        RETURN
-            relationship.channel AS channel,
-            relationship.amount AS amount,
-            relationship.currency AS currency,
-            related.account_id AS counterparty,
-            CASE WHEN startNode(relationship) = account THEN 'to' ELSE 'from' END AS direction
-        LIMIT $limit
-        """
-
+    def _fetch_account_ids(self, customer_id: str) -> set[str]:
+        query = (
+            "MATCH (customer {customer_id: $customer_id})-[:OWNS]->(account) "
+            "RETURN account.account_id AS account_id"
+        )
         with self.driver.session(database=self.config.neo4j_database) as session:
-            records = session.run(query, customer_id=customer_id, limit=limit)
-            return [self._record_to_transaction_evidence(record) for record in records]
+            records = session.run(query, customer_id=customer_id)
+            return {str(record["account_id"]) for record in records}
 
-    def _fetch_second_hop_evidence(self, customer_id: str, limit: int) -> list[EvidenceItem]:
-        # Pivots through the customer's own account and one counterparty
-        # ("mid") to describe that counterparty's *other* transactions -
-        # `related <> account` excludes reporting the customer's own
-        # transaction back to itself as if it were new second-hop evidence.
-        query = """
-        MATCH (customer {customer_id: $customer_id})-[:OWNS]->(account)-[:TRANSFERRED_TO]-(mid)
-              -[relationship:TRANSFERRED_TO]-(related)
-        WHERE related <> account
-        RETURN DISTINCT
-            relationship.channel AS channel,
-            relationship.amount AS amount,
-            relationship.currency AS currency,
-            related.account_id AS counterparty,
-            CASE WHEN startNode(relationship) = mid THEN 'to' ELSE 'from' END AS direction
-        LIMIT $limit
-        """
+    def _fetch_hop_evidence(self, customer_id: str, hop_radius: int, limit: int) -> list[EvidenceItem]:
+        # Iterative frontier expansion: one simple, non-variable-length
+        # Cypher query per hop against the current frontier, rather than a
+        # single `TRANSFERRED_TO*1..N` pattern - avoids the "variable-length
+        # bound can't be a bind parameter" constraint (see _CYCLE_HOPS_RANGE)
+        # and lets each hop's evidence be framed relative to that hop's own
+        # frontier, matching what the offline graph_engine.hop_evidence does.
+        frontier = self._fetch_account_ids(customer_id)
+        if not frontier:
+            return []
 
-        with self.driver.session(database=self.config.neo4j_database) as session:
-            records = session.run(query, customer_id=customer_id, limit=limit)
-            return [self._record_to_transaction_evidence(record) for record in records]
+        visited = set(frontier)
+        evidence: list[EvidenceItem] = []
+        for _ in range(max(hop_radius, 1)):
+            query = """
+            MATCH (a:Account)-[r:TRANSFERRED_TO]-(b:Account)
+            WHERE a.account_id IN $frontier AND NOT b.account_id IN $visited
+            RETURN DISTINCT
+                b.account_id AS counterparty,
+                r.channel AS channel,
+                r.amount AS amount,
+                r.currency AS currency,
+                CASE WHEN startNode(r) = a THEN 'to' ELSE 'from' END AS direction
+            LIMIT $limit
+            """
+            with self.driver.session(database=self.config.neo4j_database) as session:
+                records = list(
+                    session.run(query, frontier=list(frontier), visited=list(visited), limit=limit)
+                )
+            if not records:
+                break
+
+            new_frontier: set[str] = set()
+            for record in records:
+                evidence.append(self._record_to_transaction_evidence(record))
+                new_frontier.add(str(record["counterparty"]))
+            visited |= new_frontier
+            frontier = new_frontier
+        return evidence
 
     def _fetch_cycle_evidence(self, customer_id: str) -> list[EvidenceItem]:
         lower, upper = _CYCLE_HOPS_RANGE
@@ -269,6 +287,37 @@ class Neo4jAlertRepository:
             return None
         return row["counterparties"], list(row["sample"])
 
+    def _fetch_alert_proximity_evidence(self, customer_id: str) -> list[EvidenceItem]:
+        lower, upper = _PROXIMITY_HOPS_RANGE
+        max_hops = max(lower, min(self.config.alert_proximity_max_hops, upper))
+        query = (
+            "MATCH (customer {customer_id: $customer_id})-[:OWNS]->(account) "
+            f"MATCH path = (account)-[:TRANSFERRED_TO*1..{max_hops}]-(other_account) "
+            "MATCH (other_customer)-[:OWNS]->(other_account) "
+            "MATCH (a:Alert)-[:TARGETS]->(other_customer) "
+            "WHERE other_customer.customer_id <> $customer_id "
+            "WITH other_customer, a, min(length(path)) AS hops "
+            "RETURN other_customer.customer_id AS linked_customer_id, a.alert_id AS linked_alert_id, hops "
+            "ORDER BY hops ASC "
+            "LIMIT 5"
+        )
+
+        with self.driver.session(database=self.config.neo4j_database) as session:
+            rows = list(session.run(query, customer_id=customer_id))
+
+        return [
+            EvidenceItem(
+                kind="alert-proximity",
+                subject=customer_id,
+                details=(
+                    f"Connected within {row['hops']} hop(s) to customer {row['linked_customer_id']}, "
+                    f"who already has alert {row['linked_alert_id']}."
+                ),
+                source="neo4j",
+            )
+            for row in rows
+        ]
+
     def _record_to_transaction_evidence(self, record: object) -> EvidenceItem:
         try:
             channel = str(record["channel"])
@@ -291,6 +340,61 @@ class Neo4jAlertRepository:
 
     def fetch_connected_context(self, customer_id: str, hop_radius: int = 1) -> list[EvidenceItem]:
         return self.fetch_evidence(customer_id, self.config.evidence_limit, hop_radius=hop_radius)
+
+    def find_alert_for_customer(self, customer_id: str) -> AlertRecord | None:
+        if self.driver is not None:
+            try:
+                return self._find_alert_from_neo4j(customer_id)
+            except Exception:
+                pass
+        return self._offline_alerts.get(customer_id)
+
+    def _find_alert_from_neo4j(self, customer_id: str) -> AlertRecord | None:
+        query = (
+            "MATCH (a:Alert)-[:TARGETS]->(c {customer_id: $customer_id}) "
+            "RETURN a.alert_id AS alert_id, a.reason AS reason, a.description AS description "
+            "LIMIT 1"
+        )
+        with self.driver.session(database=self.config.neo4j_database) as session:
+            row = session.run(query, customer_id=customer_id).single()
+
+        if row is None:
+            return None
+        return AlertRecord(
+            alert_id=str(row["alert_id"]), reason=str(row["reason"]), description=str(row["description"])
+        )
+
+    def create_alert(self, customer_id: str, reason: str, description: str) -> AlertRecord:
+        record = AlertRecord(alert_id=f"alert-auto-{customer_id}", reason=reason, description=description)
+
+        if self.driver is not None:
+            try:
+                self._create_alert_in_neo4j(customer_id, record)
+                return record
+            except Exception:
+                logger.warning("Failed to persist alert %s to Neo4j; tracking offline only.", record.alert_id)
+
+        self._offline_alerts[customer_id] = record
+        return record
+
+    def _create_alert_in_neo4j(self, customer_id: str, record: AlertRecord) -> None:
+        # MERGE on the deterministic alert_id makes this idempotent at the
+        # database level too, on top of the application-level existence
+        # check callers are expected to do via find_alert_for_customer first.
+        query = (
+            "MATCH (c {customer_id: $customer_id}) "
+            "MERGE (a:Alert {alert_id: $alert_id}) "
+            "SET a.reason = $reason, a.description = $description "
+            "MERGE (a)-[:TARGETS]->(c)"
+        )
+        with self.driver.session(database=self.config.neo4j_database) as session:
+            session.run(
+                query,
+                customer_id=customer_id,
+                alert_id=record.alert_id,
+                reason=record.reason,
+                description=record.description,
+            )
 
     def describe_connection(self) -> str:
         return f"{self.config.neo4j_uri} ({self.config.neo4j_database})"

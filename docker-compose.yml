@@ -26,6 +26,33 @@ services:
       retries: 20
       start_period: 20s
 
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: aml-alert-triage-dynamodb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # In-memory mode (not -dbPath/-sharedDb): avoids sqlite file permission
+    # issues with named volumes on some Docker Desktop setups. Fine for a
+    # local study project - reseed with --seed-neo4j/--seed-dynamodb after
+    # a container restart if the table needs to be repopulated.
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    working_dir: /home/dynamodblocal
+
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: aml-alert-triage-dynamodb-admin
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+      AWS_REGION: ${DYNAMODB_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    depends_on:
+      - dynamodb-local
+
 volumes:
   neo4j_data:
   neo4j_logs:

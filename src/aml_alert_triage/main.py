@@ -8,8 +8,9 @@ from pathlib import Path
 from .config import AppConfig
 from .llm import create_llm_adapter
 from .models import TriageState
+from .report import generate_alert_report
 from .repository import Neo4jAlertRepository
-from .sample_data import SAMPLE_ALERTS
+from .snapshot_store import AlertSnapshotStore
 from .workflow import build_langgraph, build_triage_response, run_triage, state_from_mapping
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -33,15 +34,29 @@ def parse_args() -> argparse.Namespace:
         help="Path to the Cypher seed file used with --seed-neo4j.",
     )
     parser.add_argument(
+        "--check-dynamodb",
+        action="store_true",
+        help="Verify connectivity to the configured DynamoDB (Local) instance and ensure the snapshot table exists.",
+    )
+    parser.add_argument(
+        "--seed-dynamodb",
+        action="store_true",
+        help="Load alert snapshots for the pre-registered fictional alerts into DynamoDB.",
+    )
+    parser.add_argument(
+        "--dynamodb-seed-file",
+        default="data/dynamodb/seed.json",
+        help="Path to the snapshot seed file used with --seed-dynamodb.",
+    )
+    parser.add_argument(
         "--prompt",
-        default="Review this fictional AML alert and provide concise investigation insights.",
+        default="Review this fictional customer and provide concise investigation insights.",
         help="User prompt context passed into the triage strategy.",
     )
     parser.add_argument(
-        "--alert-id",
-        default="alert-001",
-        choices=sorted(SAMPLE_ALERTS),
-        help="Which fictional sample alert/typology to triage.",
+        "--customer-id",
+        default="cust-100",
+        help="Which fictional customer to investigate (owns the accounts/transactions to enrich from Neo4j).",
     )
     parser.add_argument(
         "--use-langgraph",
@@ -52,7 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--thread-id",
         default=None,
-        help="Checkpoint thread id for the LangGraph run. Defaults to the alert id.",
+        help="Checkpoint thread id for the LangGraph run. Defaults to the customer id.",
     )
     parser.add_argument(
         "--analyst-decision",
@@ -61,34 +76,60 @@ def parse_args() -> argparse.Namespace:
         "'confirm-escalation' or 'reject-escalation'. Also used as the linear-path "
         "human review outcome when set.",
     )
+    parser.add_argument(
+        "--report-alert-id",
+        default=None,
+        help="Generate a Markdown investigation report for this alert id from its persisted "
+        "DynamoDB snapshot, instead of running a triage investigation.",
+    )
+    parser.add_argument(
+        "--report-output",
+        default=None,
+        help="Output path for --report-alert-id. Defaults to reports/<alert_id>.md.",
+    )
     return parser.parse_args()
 
 
-def _run_linear(alert, repository, llm_adapter, config: AppConfig, args: argparse.Namespace) -> None:
+def _run_linear(
+    customer_id: str,
+    repository: Neo4jAlertRepository,
+    llm_adapter,
+    config: AppConfig,
+    snapshot_store: AlertSnapshotStore,
+    args: argparse.Namespace,
+) -> None:
     human_review_callback = (lambda state: args.analyst_decision) if args.analyst_decision else None
     state = run_triage(
-        alert,
+        customer_id,
         repository,
         llm_adapter=llm_adapter,
         config=config,
         user_prompt=args.prompt,
         human_review_callback=human_review_callback,
+        snapshot_store=snapshot_store,
     )
     print(json.dumps(build_triage_response(state), indent=2))
 
 
-def _run_langgraph(alert, repository, llm_adapter, config: AppConfig, args: argparse.Namespace) -> None:
-    graph = build_langgraph(repository, llm_adapter, config)
+def _run_langgraph(
+    customer_id: str,
+    repository: Neo4jAlertRepository,
+    llm_adapter,
+    config: AppConfig,
+    snapshot_store: AlertSnapshotStore,
+    args: argparse.Namespace,
+) -> None:
+    graph = build_langgraph(repository, llm_adapter, config, snapshot_store)
     if graph is None:
         print(json.dumps({"error": "LangGraph is not installed; run `pip install -e .`."}, indent=2))
         return
 
     from langgraph.types import Command
 
-    thread_id = args.thread_id or alert.alert_id
+    thread_id = args.thread_id or customer_id
     thread_config = {"configurable": {"thread_id": thread_id}}
 
-    result = graph.invoke(TriageState(alert=alert, user_prompt=args.prompt), config=thread_config)
+    result = graph.invoke(TriageState(customer_id=customer_id, user_prompt=args.prompt), config=thread_config)
 
     if "__interrupt__" in result:
         interrupt_payload = [item.value for item in result["__interrupt__"]]
@@ -100,7 +141,7 @@ def _run_langgraph(alert, repository, llm_adapter, config: AppConfig, args: argp
         else:
             print(
                 "\nRun paused for analyst review. Resume it (same process) with, for example:\n"
-                f"  python -m aml_alert_triage.main --use-langgraph --alert-id {alert.alert_id} "
+                f"  python -m aml_alert_triage.main --use-langgraph --customer-id {customer_id} "
                 f"--thread-id {thread_id} --analyst-decision confirm-escalation\n"
                 "\nNote: the built-in checkpointer is in-memory only, so resuming only works "
                 "within the same process/run - a durable checkpointer (e.g. SqliteSaver) would "
@@ -114,25 +155,47 @@ def _run_langgraph(alert, repository, llm_adapter, config: AppConfig, args: argp
 def main() -> None:
     args = parse_args()
     config = AppConfig.from_env()
-    repository = Neo4jAlertRepository(config=config)
-    llm_adapter = create_llm_adapter(config)
 
     if args.check_neo4j:
+        repository = Neo4jAlertRepository(config=config)
         repository.verify_connection()
         print(json.dumps({"neo4j": "ok", "connection": repository.describe_connection()}, indent=2))
         return
 
     if args.seed_neo4j:
+        repository = Neo4jAlertRepository(config=config)
         loaded = repository.load_seed_file(Path(args.seed_file))
         print(json.dumps({"seed_file": args.seed_file, "statements_executed": loaded}, indent=2))
         return
 
-    alert = SAMPLE_ALERTS[args.alert_id]
+    if args.check_dynamodb:
+        snapshot_store = AlertSnapshotStore(config=config)
+        snapshot_store.ensure_table()
+        print(json.dumps({"dynamodb": "ok", "table": config.dynamodb_table_name}, indent=2))
+        return
+
+    if args.seed_dynamodb:
+        snapshot_store = AlertSnapshotStore(config=config)
+        snapshot_store.ensure_table()
+        loaded = snapshot_store.load_seed_file(Path(args.dynamodb_seed_file))
+        print(json.dumps({"seed_file": args.dynamodb_seed_file, "snapshots_loaded": loaded}, indent=2))
+        return
+
+    if args.report_alert_id:
+        snapshot_store = AlertSnapshotStore(config=config)
+        output_path = Path(args.report_output) if args.report_output else None
+        report_path = generate_alert_report(args.report_alert_id, snapshot_store, output_path)
+        print(json.dumps({"alert_id": args.report_alert_id, "report_path": str(report_path)}, indent=2))
+        return
+
+    repository = Neo4jAlertRepository(config=config)
+    llm_adapter = create_llm_adapter(config)
+    snapshot_store = AlertSnapshotStore(config=config)
 
     if args.use_langgraph:
-        _run_langgraph(alert, repository, llm_adapter, config, args)
+        _run_langgraph(args.customer_id, repository, llm_adapter, config, snapshot_store, args)
     else:
-        _run_linear(alert, repository, llm_adapter, config, args)
+        _run_linear(args.customer_id, repository, llm_adapter, config, snapshot_store, args)
 
 
 if __name__ == "__main__":
