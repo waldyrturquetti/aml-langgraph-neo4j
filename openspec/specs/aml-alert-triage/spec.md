@@ -26,16 +26,16 @@ The system MUST read Neo4j connection settings from configuration so the triage 
 - **THEN** the system SHALL fail with a clear configuration error that explains how to enable the local Neo4j service
 
 ### Requirement: AML alert triage workflow
-The system MUST provide a LangGraph-based workflow that ingests a fictional AML alert, tracks triage state, and produces a structured recommendation.
+The system MUST provide a LangGraph-based workflow that ingests a fictional AML alert, tracks triage state, generates LLM insights from Neo4j evidence, and produces a structured recommendation.
 
-#### Scenario: Workflow starts from an alert
-- **WHEN** the system receives a fictional alert payload
-- **THEN** it SHALL initialize triage state with the alert identifier, entity context, and investigation status
-- **AND THEN** it SHALL route the alert through the triage workflow
+#### Scenario: Workflow starts from a user prompt and alert context
+- **WHEN** the system receives a user triage prompt with a fictional alert payload
+- **THEN** it SHALL initialize triage state with alert identifier, prompt context, entity context, and investigation status
+- **AND THEN** it SHALL route the alert through enrichment, insight generation, and recommendation stages
 
-#### Scenario: Workflow produces a structured result
+#### Scenario: Workflow produces a structured result with insights
 - **WHEN** the workflow completes triage
-- **THEN** it SHALL return a structured result containing the decision, rationale, and supporting evidence summary
+- **THEN** it SHALL return a structured result containing decision, rationale, supporting evidence summary, and LLM-generated insights
 
 ### Requirement: Neo4j evidence enrichment
 The system MUST enrich the alert with connected evidence from Neo4j, including related entities, transactions, and prior alert history when available.
@@ -61,14 +61,22 @@ The system MUST enrich the alert with connected evidence from Neo4j, including r
 - **AND THEN** the workflow SHALL accept the result without additional shape adaptation
 
 ### Requirement: Analyst-ready recommendation
-The system MUST generate an analyst-ready triage recommendation that references the collected evidence and does not claim unsupported facts.
+The system MUST generate an analyst-ready triage recommendation that references collected evidence and generated insights without claiming unsupported facts.
 
-#### Scenario: Recommendation cites evidence
+#### Scenario: Recommendation cites evidence and insight boundaries
 - **WHEN** the workflow generates a recommendation
 - **THEN** it SHALL reference the evidence used to support the conclusion
-- **AND THEN** it SHALL avoid asserting facts that are not present in the triage state or Neo4j results
+- **AND THEN** it SHALL distinguish factual evidence statements from LLM interpretive insights
 
 #### Scenario: Recommendation remains deterministic in structure
 - **WHEN** two alerts with the same input data are processed
-- **THEN** the system SHALL produce recommendations with the same output fields and workflow stages
+- **THEN** the system SHALL produce recommendations with the same output fields and workflow stages even if insight wording varies
+
+### Requirement: README includes strategy flow example
+The system documentation MUST include a flow example that explains how the triage strategy processes user prompts with Neo4j and LLM integration.
+
+#### Scenario: Flow example documents end-to-end path
+- **WHEN** a developer reads the README
+- **THEN** the documentation SHALL show the sequence user prompt -> Neo4j retrieval -> LLM insight generation -> response output
+- **AND THEN** it SHALL describe each stage in plain English suitable for learning use
 
