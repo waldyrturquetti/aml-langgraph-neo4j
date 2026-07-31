@@ -1,0 +1,31 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	initialize(initialize)
+	enrich(enrich)
+	widen_search(widen_search)
+	insights(insights)
+	register_alert(register_alert)
+	assess_risk(assess_risk)
+	human_review(human_review)
+	review(review)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> initialize;
+	assess_risk -.-> human_review;
+	assess_risk -.-> review;
+	enrich -.-> insights;
+	enrich -.-> widen_search;
+	human_review --> review;
+	initialize --> enrich;
+	insights --> register_alert;
+	register_alert --> assess_risk;
+	widen_search --> enrich;
+	review --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+

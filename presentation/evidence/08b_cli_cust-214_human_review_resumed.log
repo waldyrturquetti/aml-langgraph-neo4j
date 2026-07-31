@@ -1,0 +1,75 @@
+INFO aml_alert_triage.workflow Initialized triage state for customer cust-214
+INFO aml_alert_triage.workflow Loaded 6 evidence items for customer cust-214 at hop radius 1
+INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO aml_alert_triage.workflow Processed insight stage for customer cust-214 with status generated
+INFO aml_alert_triage.workflow Alert outcome for customer cust-214: existing
+INFO aml_alert_triage.workflow Assessed risk level high for customer cust-214
+WARNING langgraph.checkpoint.serde.jsonplus Deserializing unregistered type aml_alert_triage.models.EvidenceItem from checkpoint. This will be blocked in a future version. Set LANGGRAPH_STRICT_MSGPACK=true to block now, or add to allowed_msgpack_modules to allow explicitly: [('aml_alert_triage.models', 'EvidenceItem')]
+WARNING langgraph.checkpoint.serde.jsonplus Deserializing unregistered type aml_alert_triage.models.AlertRecord from checkpoint. This will be blocked in a future version. Set LANGGRAPH_STRICT_MSGPACK=true to block now, or add to allowed_msgpack_modules to allow explicitly: [('aml_alert_triage.models', 'AlertRecord')]
+WARNING langgraph.checkpoint.serde.jsonplus Deserializing unregistered type aml_alert_triage.models.RiskAssessment from checkpoint. This will be blocked in a future version. Set LANGGRAPH_STRICT_MSGPACK=true to block now, or add to allowed_msgpack_modules to allow explicitly: [('aml_alert_triage.models', 'RiskAssessment')]
+WARNING langgraph.checkpoint.serde.jsonplus Deserializing unregistered type aml_alert_triage.models.InsightResult from checkpoint. This will be blocked in a future version. Set LANGGRAPH_STRICT_MSGPACK=true to block now, or add to allowed_msgpack_modules to allow explicitly: [('aml_alert_triage.models', 'InsightResult')]
+WARNING langgraph.checkpoint.serde.jsonplus Deserializing unregistered type aml_alert_triage.models.AlertOutcome from checkpoint. This will be blocked in a future version. Set LANGGRAPH_STRICT_MSGPACK=true to block now, or add to allowed_msgpack_modules to allow explicitly: [('aml_alert_triage.models', 'AlertOutcome')]
+INFO aml_alert_triage.workflow Generated recommendation escalate for customer cust-214
+{
+  "paused": true,
+  "thread_id": "cust-214",
+  "interrupt": [
+    {
+      "reason": "High-risk AML structural pattern detected; analyst confirmation is required.",
+      "customer_id": "cust-214",
+      "risk_level": "high",
+      "typologies": [
+        "structuring-fanin"
+      ],
+      "evidence_summary": "PIX transfer of 936.16 BRL from acct-214-c214s5.; PIX transfer of 947.91 BRL from acct-214-c214s4.; PIX transfer of 950.84 BRL from acct-214-c214s3.; PIX transfer of 954.71 BRL from acct-214-c214s2.; PIX transfer of 958.15 BRL from acct-214-c214s1.; Detected 5 distinct incoming transfers converging onto this account (possible mule/collector pattern); sample sources: ['acct-214-c214s5', 'acct-214-c214s4', 'acct-214-c214s3', 'acct-214-c214s2', 'acct-214-c214s1']."
+    }
+  ]
+}
+{
+  "customer_id": "cust-214",
+  "status": "completed",
+  "workflow_steps": [
+    "initialized",
+    "enriched-hop-1",
+    "insights-generated",
+    "alert-existing",
+    "risk-assessed-high",
+    "analyst-reviewed",
+    "reviewed",
+    "completed"
+  ],
+  "disposition": "escalate",
+  "rationale": "Factual evidence: PIX transfer of 936.16 BRL from acct-214-c214s5.; PIX transfer of 947.91 BRL from acct-214-c214s4.; PIX transfer of 950.84 BRL from acct-214-c214s3.; PIX transfer of 954.71 BRL from acct-214-c214s2.; PIX transfer of 958.15 BRL from acct-214-c214s1.; Detected 5 distinct incoming transfers converging onto this account (possible mule/collector pattern); sample sources: ['acct-214-c214s5', 'acct-214-c214s4', 'acct-214-c214s3', 'acct-214-c214s2', 'acct-214-c214s1']. Structural risk signal: Structural graph pattern(s) detected: structuring-fanin. An analyst confirmed the escalation (decision: confirm-escalation). Interpretive LLM insights: Identified a fan-in pattern: 5 similar-amount incoming PIX transfers (BRL 936.16\u2013958.15) from distinct sources into cust-214. The 'structuring-fanin' detector flagged this as a possible mule/collector pattern. An alert (alert-auto-cust-214) already exists for this customer and pattern; do not open a duplicate.",
+  "evidence_count": 6,
+  "evidence_summary": "PIX transfer of 936.16 BRL from acct-214-c214s5.; PIX transfer of 947.91 BRL from acct-214-c214s4.; PIX transfer of 950.84 BRL from acct-214-c214s3.; PIX transfer of 954.71 BRL from acct-214-c214s2.; PIX transfer of 958.15 BRL from acct-214-c214s1.; Detected 5 distinct incoming transfers converging onto this account (possible mule/collector pattern); sample sources: ['acct-214-c214s5', 'acct-214-c214s4', 'acct-214-c214s3', 'acct-214-c214s2', 'acct-214-c214s1'].",
+  "hop_radius": 1,
+  "enrichment_attempts": 1,
+  "risk": {
+    "level": "high",
+    "rationale": "Structural graph pattern(s) detected: structuring-fanin.",
+    "typologies": [
+      "structuring-fanin"
+    ]
+  },
+  "requires_human_review": true,
+  "analyst_decision": "confirm-escalation",
+  "insights": {
+    "status": "generated",
+    "summary": "Identified a fan-in pattern: 5 similar-amount incoming PIX transfers (BRL 936.16\u2013958.15) from distinct sources into cust-214. The 'structuring-fanin' detector flagged this as a possible mule/collector pattern. An alert (alert-auto-cust-214) already exists for this customer and pattern; do not open a duplicate.",
+    "key_observations": [
+      "Incoming PIX of BRL 936.16 from acct-214-c214s5.",
+      "Incoming PIX of BRL 947.91 from acct-214-c214s4.",
+      "Incoming PIX of BRL 950.84 from acct-214-c214s3.",
+      "Incoming PIX of BRL 954.71 from acct-214-c214s2.",
+      "Incoming PIX of BRL 958.15 from acct-214-c214s1.",
+      "Detector 'structuring-fanin' reports 5 distinct incoming transfers converging on cust-214; sources: acct-214-c214s5, acct-214-c214s4, acct-214-c214s3, acct-214-c214s2, acct-214-c214s1."
+    ],
+    "error": null,
+    "recommend_alert": false
+  },
+  "alert": {
+    "action": "existing",
+    "alert_id": "alert-auto-cust-214",
+    "reason": "Concrete fan-in pattern: 5 distinct incoming PIX transfers from acct-214-c214s5/c214s4/c214s3/c214s2/c214s1 with similar amounts (BRL 936.16\u2013958.15) converging into cust-214, per 'structuring-fanin' detection\u2014consistent with mule/collector activity."
+  }
+}

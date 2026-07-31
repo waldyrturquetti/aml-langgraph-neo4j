@@ -1,0 +1,26 @@
+INFO aml_alert_triage.workflow Initialized triage state for customer cust-214
+INFO aml_alert_triage.workflow Loaded 6 evidence items for customer cust-214 at hop radius 1
+INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO aml_alert_triage.workflow Processed insight stage for customer cust-214 with status generated
+INFO aml_alert_triage.workflow Alert outcome for customer cust-214: existing
+INFO aml_alert_triage.workflow Assessed risk level high for customer cust-214
+{
+  "paused": true,
+  "thread_id": "cust-214",
+  "interrupt": [
+    {
+      "reason": "High-risk AML structural pattern detected; analyst confirmation is required.",
+      "customer_id": "cust-214",
+      "risk_level": "high",
+      "typologies": [
+        "structuring-fanin"
+      ],
+      "evidence_summary": "PIX transfer of 936.16 BRL from acct-214-c214s5.; PIX transfer of 947.91 BRL from acct-214-c214s4.; PIX transfer of 950.84 BRL from acct-214-c214s3.; PIX transfer of 954.71 BRL from acct-214-c214s2.; PIX transfer of 958.15 BRL from acct-214-c214s1.; Detected 5 distinct incoming transfers converging onto this account (possible mule/collector pattern); sample sources: ['acct-214-c214s5', 'acct-214-c214s4', 'acct-214-c214s3', 'acct-214-c214s2', 'acct-214-c214s1']."
+    }
+  ]
+}
+
+Run paused for analyst review. Resume it (same process) with, for example:
+  python -m aml_alert_triage.main --use-langgraph --customer-id cust-214 --thread-id cust-214 --analyst-decision confirm-escalation
+
+Note: the built-in checkpointer is in-memory only, so resuming only works within the same process/run - a durable checkpointer (e.g. SqliteSaver) would be needed to resume across separate CLI invocations.

@@ -1,0 +1,59 @@
+INFO aml_alert_triage.workflow Initialized triage state for customer cust-129
+INFO aml_alert_triage.workflow Loaded 8 evidence items for customer cust-129 at hop radius 1
+INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO aml_alert_triage.workflow Processed insight stage for customer cust-129 with status generated
+INFO aml_alert_triage.workflow Assessed risk level high for customer cust-129
+INFO aml_alert_triage.workflow Alert outcome for customer cust-129: created
+INFO aml_alert_triage.workflow Assessed risk level high for customer cust-129
+INFO aml_alert_triage.workflow Generated recommendation escalate for customer cust-129
+{
+  "customer_id": "cust-129",
+  "status": "completed",
+  "workflow_steps": [
+    "initialized",
+    "enriched-hop-1",
+    "insights-generated",
+    "alert-created",
+    "risk-assessed-high",
+    "analyst-reviewed",
+    "reviewed",
+    "completed"
+  ],
+  "disposition": "escalate",
+  "rationale": "Factual evidence: TED transfer of 4200.00 BRL from acct-proximity-bridge.; Deposit of 3352.81 BRL to acct-122.; Boleto payment of 5210.46 BRL to acct-124.; Deposit of 5708.11 BRL to acct-122.; Boleto payment of 12044.29 BRL to acct-122.; Deposit of 5141.97 BRL to acct-124.; TED transfer of 5275.83 BRL to acct-120.; Connected within 2 hop(s) to customer cust-200, who already has alert alert-auto-cust-200. Structural risk signal: Structural graph pattern(s) detected: alert-proximity. An analyst confirmed the escalation (decision: pending-manual-review). Interpretive LLM insights: Facts: Transactions include deposits to acct-122 and acct-124, boleto payments to acct-122 and acct-124, one inbound TED from acct-proximity-bridge, and one outbound TED to acct-120; the customer is within 2 hops of cust-200 who already has an alert. Interpretation: No clear cycling or structuring is evident from the listed transactions; recommend alert based on the proximity to an already-alerted customer.",
+  "evidence_count": 8,
+  "evidence_summary": "TED transfer of 4200.00 BRL from acct-proximity-bridge.; Deposit of 3352.81 BRL to acct-122.; Boleto payment of 5210.46 BRL to acct-124.; Deposit of 5708.11 BRL to acct-122.; Boleto payment of 12044.29 BRL to acct-122.; Deposit of 5141.97 BRL to acct-124.; TED transfer of 5275.83 BRL to acct-120.; Connected within 2 hop(s) to customer cust-200, who already has alert alert-auto-cust-200.",
+  "hop_radius": 1,
+  "enrichment_attempts": 1,
+  "risk": {
+    "level": "high",
+    "rationale": "Structural graph pattern(s) detected: alert-proximity.",
+    "typologies": [
+      "alert-proximity"
+    ]
+  },
+  "requires_human_review": true,
+  "analyst_decision": "pending-manual-review",
+  "insights": {
+    "status": "generated",
+    "summary": "Facts: Transactions include deposits to acct-122 and acct-124, boleto payments to acct-122 and acct-124, one inbound TED from acct-proximity-bridge, and one outbound TED to acct-120; the customer is within 2 hops of cust-200 who already has an alert. Interpretation: No clear cycling or structuring is evident from the listed transactions; recommend alert based on the proximity to an already-alerted customer.",
+    "key_observations": [
+      "TED transfer of 4200.00 BRL from acct-proximity-bridge.",
+      "Deposit of 3352.81 BRL to acct-122.",
+      "Boleto payment of 5210.46 BRL to acct-124.",
+      "Deposit of 5708.11 BRL to acct-122.",
+      "Boleto payment of 12044.29 BRL to acct-122.",
+      "Deposit of 5141.97 BRL to acct-124.",
+      "TED transfer of 5275.83 BRL to acct-120.",
+      "Connected within 2 hop(s) to customer cust-200, who already has alert alert-auto-cust-200.",
+      "Existing alert: none on file for this customer."
+    ],
+    "error": null,
+    "recommend_alert": true
+  },
+  "alert": {
+    "action": "created",
+    "alert_id": "alert-auto-cust-129",
+    "reason": "Proximity trigger: evidence states the customer is \u201cConnected within 2 hop(s) to customer cust-200, who already has alert alert-auto-cust-200.\u201d This proximity to an already-alerted customer warrants alerting."
+  }
+}

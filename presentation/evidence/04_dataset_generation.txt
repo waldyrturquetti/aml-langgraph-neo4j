@@ -1,0 +1,4 @@
+Validated 50 customers, 145 accounts, 163 transactions.
+Wrote C:\Users\waldyr\Desktop\Work\Itau\HandsOn\aml-langgraph-neo4j\src\aml_alert_triage\graph_dataset.py
+Wrote C:\Users\waldyr\Desktop\Work\Itau\HandsOn\aml-langgraph-neo4j\data\neo4j\seed.cypher
+Wrote C:\Users\waldyr\Desktop\Work\Itau\HandsOn\aml-langgraph-neo4j\data\dynamodb\seed.json

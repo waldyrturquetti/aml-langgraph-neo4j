@@ -1,0 +1,28 @@
+flowchart TB
+    subgraph CLI["CLI Python (main.py)"]
+        WF["Workflow LangGraph<br/>(StateGraph com ciclos,<br/>condicionais e interrupt)"]
+    end
+
+    subgraph LLM["Provedor de LLM (escolhido via .env)"]
+        direction LR
+        ANT["Anthropic Claude"]
+        OAI["OpenAI (gpt-5, reasoning_effort)"]
+    end
+
+    NEO[("Neo4j 5<br/>Customer / Account / Alert<br/>grafo transacional")]
+    DYN[("DynamoDB Local<br/>snapshot imutável<br/>evidência + insight + risco")]
+    ADMIN["dynamodb-admin<br/>(UI web :8001)"]
+    REPORT["Relatório .md<br/>(pt-BR, com Cypher pronta)"]
+
+    WF -->|"1. lê contexto conectado<br/>(Cypher)"| NEO
+    WF -->|"2. envia evidência,<br/>pede insight estruturado"| LLM
+    LLM -->|"JSON: summary, observações,<br/>recommend_alert, versão pt-BR"| WF
+    WF -->|"3. grava Alert (idempotente)"| NEO
+    WF -->|"4. persiste snapshot imutável<br/>no momento da criação"| DYN
+    DYN --> ADMIN
+    DYN -->|"5. leitura offline,<br/>sem chamar LLM/Neo4j de novo"| REPORT
+
+    style LLM fill:#e8f0fe,stroke:#4285f4
+    style NEO fill:#e6f4ea,stroke:#34a853
+    style DYN fill:#fff3cd,stroke:#c69500
+    style REPORT fill:#f8d7da,stroke:#c0392b

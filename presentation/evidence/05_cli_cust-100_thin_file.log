@@ -1,0 +1,54 @@
+INFO aml_alert_triage.workflow Initialized triage state for customer cust-100
+INFO aml_alert_triage.workflow Loaded 1 evidence items for customer cust-100 at hop radius 1
+INFO aml_alert_triage.workflow Loaded 4 evidence items for customer cust-100 at hop radius 2
+INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO aml_alert_triage.workflow Processed insight stage for customer cust-100 with status generated
+INFO aml_alert_triage.workflow Alert outcome for customer cust-100: none
+INFO aml_alert_triage.workflow Assessed risk level elevated for customer cust-100
+INFO aml_alert_triage.workflow Generated recommendation review for customer cust-100
+{
+  "customer_id": "cust-100",
+  "status": "completed",
+  "workflow_steps": [
+    "initialized",
+    "enriched-hop-1",
+    "widened-search-radius",
+    "enriched-hop-2",
+    "insights-generated",
+    "alert-not-required",
+    "risk-assessed-elevated",
+    "reviewed",
+    "completed"
+  ],
+  "disposition": "review",
+  "rationale": "Factual evidence: TED transfer of 12515.34 BRL from acct-114.; PIX transfer of 10836.46 BRL from acct-110.; Boleto payment of 3013.39 BRL to acct-123.; Boleto payment of 10325.74 BRL from acct-110. Interpretive LLM insights: Transactions reference multiple rails (TED, PIX, boleto) and counterpart accounts (acct-114, acct-110, acct-123) with values between 3,013.39 and 12,515.34 BRL. No concrete evidence of structuring, circular flows, rapid layering, or proximity to alerted parties. Based solely on the provided data, no alert is recommended.",
+  "evidence_count": 4,
+  "evidence_summary": "TED transfer of 12515.34 BRL from acct-114.; PIX transfer of 10836.46 BRL from acct-110.; Boleto payment of 3013.39 BRL to acct-123.; Boleto payment of 10325.74 BRL from acct-110.",
+  "hop_radius": 2,
+  "enrichment_attempts": 2,
+  "risk": {
+    "level": "elevated",
+    "rationale": "Connected evidence was found but no high-risk structural pattern was detected.",
+    "typologies": []
+  },
+  "requires_human_review": false,
+  "analyst_decision": null,
+  "insights": {
+    "status": "generated",
+    "summary": "Transactions reference multiple rails (TED, PIX, boleto) and counterpart accounts (acct-114, acct-110, acct-123) with values between 3,013.39 and 12,515.34 BRL. No concrete evidence of structuring, circular flows, rapid layering, or proximity to alerted parties. Based solely on the provided data, no alert is recommended.",
+    "key_observations": [
+      "TED transfer of 12515.34 BRL from acct-114 (source: neo4j).",
+      "PIX transfer of 10836.46 BRL from acct-110 (source: neo4j).",
+      "Boleto payment of 3013.39 BRL to acct-123 (source: neo4j).",
+      "Boleto payment of 10325.74 BRL from acct-110 (source: neo4j).",
+      "No existing alerts on file for cust-100."
+    ],
+    "error": null,
+    "recommend_alert": false
+  },
+  "alert": {
+    "action": "none",
+    "alert_id": null,
+    "reason": null
+  }
+}

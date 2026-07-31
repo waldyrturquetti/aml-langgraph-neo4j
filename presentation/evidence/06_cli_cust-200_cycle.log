@@ -1,0 +1,54 @@
+INFO aml_alert_triage.workflow Initialized triage state for customer cust-200
+INFO aml_alert_triage.workflow Loaded 4 evidence items for customer cust-200 at hop radius 1
+INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO aml_alert_triage.workflow Processed insight stage for customer cust-200 with status generated
+INFO aml_alert_triage.workflow Alert outcome for customer cust-200: existing
+INFO aml_alert_triage.workflow Assessed risk level high for customer cust-200
+INFO aml_alert_triage.workflow Generated recommendation escalate for customer cust-200
+{
+  "customer_id": "cust-200",
+  "status": "completed",
+  "workflow_steps": [
+    "initialized",
+    "enriched-hop-1",
+    "insights-generated",
+    "alert-existing",
+    "risk-assessed-high",
+    "analyst-reviewed",
+    "reviewed",
+    "completed"
+  ],
+  "disposition": "escalate",
+  "rationale": "Factual evidence: TED transfer of 4150.00 BRL from acct-proximity-bridge.; TED transfer of 10882.39 BRL from acct-200-c200h2.; TED transfer of 11111.20 BRL to acct-200-c200h1.; Detected a directed fund-transfer cycle spanning 3 hop(s) that returns to the originating account. Structural risk signal: Structural graph pattern(s) detected: cycle. An analyst confirmed the escalation (decision: pending-manual-review). Interpretive LLM insights: Directed fund-transfer cycle detected for cust-200 spanning 3 hops that returns to the origin. Related TEDs involve acct-proximity-bridge (from), acct-200-c200h2 (from), and acct-200-c200h1 (to). An existing alert for this cycle already exists; no new alert recommended.",
+  "evidence_count": 4,
+  "evidence_summary": "TED transfer of 4150.00 BRL from acct-proximity-bridge.; TED transfer of 10882.39 BRL from acct-200-c200h2.; TED transfer of 11111.20 BRL to acct-200-c200h1.; Detected a directed fund-transfer cycle spanning 3 hop(s) that returns to the originating account.",
+  "hop_radius": 1,
+  "enrichment_attempts": 1,
+  "risk": {
+    "level": "high",
+    "rationale": "Structural graph pattern(s) detected: cycle.",
+    "typologies": [
+      "cycle"
+    ]
+  },
+  "requires_human_review": true,
+  "analyst_decision": "pending-manual-review",
+  "insights": {
+    "status": "generated",
+    "summary": "Directed fund-transfer cycle detected for cust-200 spanning 3 hops that returns to the origin. Related TEDs involve acct-proximity-bridge (from), acct-200-c200h2 (from), and acct-200-c200h1 (to). An existing alert for this cycle already exists; no new alert recommended.",
+    "key_observations": [
+      "Detected a directed fund-transfer cycle spanning 3 hop(s) that returns to the originating account for cust-200 (source=neo4j).",
+      "TED transfer of 4150.00 BRL from acct-proximity-bridge (source=neo4j).",
+      "TED transfer of 10882.39 BRL from acct-200-c200h2 (source=neo4j).",
+      "TED transfer of 11111.20 BRL to acct-200-c200h1 (source=neo4j).",
+      "Existing alert present: alert-auto-cust-200 (reason: cycle-detected)."
+    ],
+    "error": null,
+    "recommend_alert": false
+  },
+  "alert": {
+    "action": "existing",
+    "alert_id": "alert-auto-cust-200",
+    "reason": "cycle-detected"
+  }
+}

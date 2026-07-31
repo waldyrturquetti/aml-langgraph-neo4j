@@ -1,0 +1,16 @@
+graph LR
+    C1["Customer<br/>customer_id: cust-207"] -->|OWNS| A1["Account<br/>account_id: acct-207"]
+    A1 -->|"TRANSFERRED_TO<br/>channel: pix<br/>amount, currency"| A2["Account<br/>acct-207-c207b1"]
+    A1 -->|TRANSFERRED_TO| A3["Account<br/>acct-207-c207b2"]
+    A1 -->|TRANSFERRED_TO| A4["Account<br/>... (N contas)"]
+
+    AL["Alert<br/>alert_id: alert-auto-cust-207<br/>reason, description"] -->|TARGETS| C1
+
+    C2["Customer<br/>cust-129"] -->|OWNS| A5["Account"]
+    A5 -->|TRANSFERRED_TO| AB["Account<br/>acct-proximity-bridge"]
+    AB -->|TRANSFERRED_TO| A6["Account"]
+    A6 -->|OWNS reverso| C3["Customer<br/>cust-200 (já possui Alert)"]
+
+    style AL fill:#f8d7da,stroke:#c0392b
+    style C3 fill:#fff3cd,stroke:#c69500
+    style C2 fill:#fff3cd,stroke:#c69500
