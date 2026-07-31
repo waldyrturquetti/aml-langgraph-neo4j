@@ -4,6 +4,8 @@ A fictional AML (anti-money-laundering) customer-investigation workflow built wi
 
 This is a study project. All data is fictional; see [Project Scope](#project-scope).
 
+**[Presentation](presentation/Deck_corporativo_de_25_slides.pdf)** (PDF, 25 slides, Portuguese) - an architecture and LangGraph walkthrough built from this repo's real output.
+
 ## Prerequisites
 
 - Python 3.11+
